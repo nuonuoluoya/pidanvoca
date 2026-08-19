@@ -383,7 +383,8 @@
     .quiet-button,
     .nav-button,
     .sound-button,
-    .dictionary-button {
+    .dictionary-button,
+    .study-mode-button {
       border: 0;
       cursor: pointer;
       transition: transform 160ms ease, color 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
@@ -456,7 +457,8 @@
     }
 
     .sound-button,
-    .dictionary-button {
+    .dictionary-button,
+    .study-mode-button {
       flex: 0 0 auto;
       width: 42px;
       height: 42px;
@@ -469,10 +471,23 @@
     }
 
     .sound-button:hover,
-    .dictionary-button:hover {
+    .dictionary-button:hover,
+    .study-mode-button:hover {
       color: var(--accent);
       background: #e8f2ff;
     }
+
+    body:not([data-study-mode="full"]) .study-mode-button {
+      color: var(--accent);
+      background: rgba(220, 238, 255, 0.82);
+      box-shadow: inset 0 0 0 1px rgba(24, 120, 242, 0.08);
+    }
+
+    .study-mode-button .study-mode-icon { display: none; }
+    body[data-study-mode="full"] .study-mode-icon--full,
+    body[data-study-mode="word-only"] .study-mode-icon--word,
+    body[data-study-mode="spelling"] .study-mode-icon--spelling { display: inline; }
+    .study-mode-button:disabled { opacity: 0.46; cursor: wait; }
 
     .phonetic {
       min-height: 25px;
@@ -1006,7 +1021,8 @@
     .deck-card > * { transition: opacity 420ms linear; }
     .deck-card:not([data-offset="0"]) > * { opacity: 0; visibility: hidden; }
     .deck-card:not([data-offset="0"]) .sound-button,
-    .deck-card:not([data-offset="0"]) .dictionary-button { display: none; }
+    .deck-card:not([data-offset="0"]) .dictionary-button,
+    .deck-card:not([data-offset="0"]) .study-mode-button { display: none; }
     .deck-card.is-flying-out > *,
     .deck-card.is-yielding > * { opacity: 1 !important; visibility: visible !important; }
     .deck-card.is-incoming > * { opacity: 0 !important; visibility: visible !important; }
@@ -1038,8 +1054,56 @@
       font-weight: 760;
     }
 
+    .card-spelling-form {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: none;
+      align-items: flex-end;
+      margin: 0;
+    }
+
+    .card-spelling-input {
+      width: 100%;
+      min-width: 0;
+      padding: 4px 8px 9px;
+      border: 0;
+      border-bottom: 2px solid rgba(111, 136, 164, 0.46);
+      border-radius: 10px 10px 3px 3px;
+      outline: 0;
+      color: var(--text);
+      background: transparent;
+      font: inherit;
+      font-size: clamp(38px, 4.4vw, 58px);
+      line-height: 1;
+      letter-spacing: -0.035em;
+      font-weight: 730;
+      transition: border-color 180ms ease, background 220ms ease, box-shadow 180ms ease;
+    }
+
+    .card-spelling-input:focus {
+      border-bottom-color: rgba(24, 120, 242, 0.72);
+      box-shadow: 0 5px 10px -8px rgba(24, 120, 242, 0.58);
+    }
+
+    .card-spelling-input.is-correct {
+      border-bottom-color: rgba(67, 155, 222, 0.62);
+      background: rgba(126, 201, 254, 0.3);
+      box-shadow: 0 8px 24px rgba(89, 165, 224, 0.12);
+    }
+
+    body[data-study-mode="spelling"] .card-word { display: none; }
+    body[data-study-mode="spelling"] .card-spelling-form { display: flex; }
+    body[data-study-mode="spelling"] .card-word-row { align-items: flex-end; }
+    body[data-study-mode="spelling"] .card-tense-info { display: none; }
+
+    body[data-study-mode="word-only"] .card-progress-count,
+    body[data-study-mode="word-only"] .card-phonetic,
+    body[data-study-mode="word-only"] .card-meaning,
+    body[data-study-mode="word-only"] .card-notes { display: none; }
+
     .deck-card .sound-button,
-    .deck-card .dictionary-button {
+    .deck-card .dictionary-button,
+    .deck-card .study-mode-button {
       width: 40px;
       height: 40px;
     }
@@ -1174,6 +1238,15 @@
       }
 
       .card-word { font-size: clamp(38px, 11vw, 50px); }
+      .card-word-row { gap: 9px; }
+      .card-spelling-input {
+        padding-right: 5px;
+        padding-left: 5px;
+        font-size: clamp(32px, 9.6vw, 44px);
+      }
+      .deck-card .sound-button,
+      .deck-card .dictionary-button,
+      .deck-card .study-mode-button { width: 36px; height: 36px; }
       .card-phonetic { margin-top: 22px; font-size: 15px; }
       .card-meaning { margin-top: 20px; font-size: 17px; }
       .card-notes { margin-top: 28px; padding-top: 25px; }
@@ -1203,7 +1276,7 @@
     }
   </style>
 </head>
-<body>
+<body data-study-mode="full">
   <button class="settings-toggle" id="settingsButton" type="button" aria-label="打开设置" aria-controls="settingsDrawer" aria-expanded="false" title="打开设置">
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15.03 1.7 1.7 0 0 0 3.08 14H3v-4h.08A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.06-.06L7.03 4.2l.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.08V3h4v.08a1.7 1.7 0 0 0 1.03 1.52 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"></path></svg>
   </button>
@@ -1358,6 +1431,12 @@
     const importInput = document.getElementById('importInput');
     const importStatus = document.getElementById('importStatus');
     const shuffleButton = document.getElementById('shuffleButton');
+    const studyModes = ['full', 'word-only', 'spelling'];
+    const studyModeLabels = {
+      full: '完整显示',
+      'word-only': '只显示单词',
+      spelling: '拼写练习'
+    };
 
     previousButton.disabled = true;
     nextButton.disabled = true;
@@ -1371,6 +1450,8 @@
     let isReady = false;
     let isImporting = false;
     let transitionTimer = 0;
+    let spellingAdvanceTimer = 0;
+    let studyMode = 'full';
     const visibleRadius = 3;
     const exitPoints = new Map();
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -1616,14 +1697,103 @@
       return nextDeck;
     }
 
+    function cancelSpellingAdvance() {
+      window.clearTimeout(spellingAdvanceTimer);
+      spellingAdvanceTimer = 0;
+    }
+
+    function normalizeSpelling(value) {
+      return String(value).trim().toLocaleLowerCase('en-US').replace(/\s+/g, ' ');
+    }
+
+    function appendMeaningText(element, value) {
+      const text = String(value);
+      const tensePattern = /时\s*态\s*[:：][^\r\n]*/g;
+      let cursor = 0;
+      for (const match of text.matchAll(tensePattern)) {
+        if (match.index > cursor) element.append(document.createTextNode(text.slice(cursor, match.index)));
+        const tense = document.createElement('span');
+        tense.className = 'card-tense-info';
+        tense.textContent = match[0];
+        element.append(tense);
+        cursor = match.index + match[0].length;
+      }
+      if (cursor < text.length) element.append(document.createTextNode(text.slice(cursor)));
+    }
+
+    function syncStudyModeButton(button) {
+      const currentIndex = studyModes.indexOf(studyMode);
+      const nextMode = studyModes[(currentIndex + 1) % studyModes.length];
+      const description = '当前：' + studyModeLabels[studyMode] + '；点击切换到' + studyModeLabels[nextMode];
+      button.title = description;
+      button.setAttribute('aria-label', description);
+    }
+
+    function syncStudyModeButtons() {
+      cardLayer.querySelectorAll('.study-mode-button').forEach(syncStudyModeButton);
+    }
+
+    function resetSpellingInputs() {
+      cardLayer.querySelectorAll('.card-spelling-input').forEach((input) => {
+        input.value = '';
+        input.readOnly = false;
+        input.classList.remove('is-correct');
+        input.removeAttribute('data-accepted');
+        input.setAttribute('aria-label', '输入当前单词');
+      });
+    }
+
+    function focusCurrentSpellingInput() {
+      if (studyMode !== 'spelling' || isTransitioning) return;
+      const input = cardLayer.querySelector('.deck-card[data-offset="0"] .card-spelling-input:not([readonly])');
+      if (input) input.focus({ preventScroll: true });
+    }
+
+    function setStudyMode(nextMode) {
+      if (!studyModes.includes(nextMode) || nextMode === studyMode) return;
+      cancelSpellingAdvance();
+      studyMode = nextMode;
+      document.body.dataset.studyMode = studyMode;
+      resetSpellingInputs();
+      syncStudyModeButtons();
+      if (studyMode === 'spelling') window.requestAnimationFrame(focusCurrentSpellingInput);
+    }
+
+    function cycleStudyMode() {
+      if (isTransitioning || isImporting) return;
+      const currentIndex = studyModes.indexOf(studyMode);
+      setStudyMode(studyModes[(currentIndex + 1) % studyModes.length]);
+    }
+
+    function checkSpellingInput(input) {
+      if (studyMode !== 'spelling' || isTransitioning || input.dataset.accepted === 'true') return;
+      const card = input.closest('.deck-card[data-offset="0"]');
+      if (!card) return;
+      const deckPosition = Number(card.dataset.deckPosition);
+      if (deckPosition !== position) return;
+      const answer = WORDS[deck[deckPosition]].word;
+      if (normalizeSpelling(input.value) !== normalizeSpelling(answer)) return;
+
+      input.dataset.accepted = 'true';
+      input.readOnly = true;
+      input.classList.add('is-correct');
+      input.setAttribute('aria-label', '拼写正确，正在切换到下一个单词');
+      cancelSpellingAdvance();
+      spellingAdvanceTimer = window.setTimeout(() => {
+        spellingAdvanceTimer = 0;
+        if (studyMode === 'spelling' && position === deckPosition) next();
+      }, 600);
+    }
+
     function setCardOffset(card, offset) {
       const isCurrent = offset === 0;
       card.dataset.offset = String(offset);
       card.setAttribute('aria-hidden', String(!isCurrent));
       const heading = card.querySelector('.card-word');
-      const sound = card.querySelector('.sound-button');
       if (heading) heading.setAttribute('aria-level', isCurrent ? '1' : '2');
-      if (sound) sound.tabIndex = isCurrent ? 0 : -1;
+      card.querySelectorAll('.sound-button, .dictionary-button, .study-mode-button, .card-spelling-input').forEach((control) => {
+        control.tabIndex = isCurrent ? 0 : -1;
+      });
     }
 
     function progressLabelFor(progressValue) {
@@ -1714,7 +1884,28 @@
       dictionary.setAttribute('aria-label', '在 Cambridge Dictionary 中查询 ' + entry.word);
       dictionary.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3H6.5A2.5 2.5 0 0 0 4 19.5v-14Z"></path><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H14v17a3 3 0 0 1 3-3h.5a2.5 2.5 0 0 1 2.5 2.5v-14Z"></path></svg>';
 
-      wordRow.append(heading, sound, dictionary);
+      const studyModeButton = document.createElement('button');
+      studyModeButton.className = 'study-mode-button';
+      studyModeButton.type = 'button';
+      studyModeButton.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">'
+        + '<g class="study-mode-icon study-mode-icon--full"><path d="M5 6h14M5 12h14M5 18h10"></path></g>'
+        + '<g class="study-mode-icon study-mode-icon--word"><path d="m7 18 3.4-12h3.2L17 18M8.5 14h7"></path></g>'
+        + '<g class="study-mode-icon study-mode-icon--spelling"><path d="m5 16-.7 3.7L8 19l10.6-10.6-3-3L5 16Z"></path><path d="M4 21h16"></path></g>'
+        + '</svg>';
+      syncStudyModeButton(studyModeButton);
+
+      const spellingForm = document.createElement('div');
+      spellingForm.className = 'card-spelling-form';
+      const spellingInput = document.createElement('input');
+      spellingInput.className = 'card-spelling-input';
+      spellingInput.type = 'text';
+      spellingInput.autocomplete = 'off';
+      spellingInput.autocapitalize = 'none';
+      spellingInput.spellcheck = false;
+      spellingInput.setAttribute('aria-label', '输入当前单词');
+      spellingForm.append(spellingInput);
+
+      wordRow.append(heading, spellingForm, sound, dictionary, studyModeButton);
       content.append(wordRow);
 
       if (entry.phonetic) {
@@ -1727,7 +1918,7 @@
       if (entry.meaning) {
         const meaning = document.createElement('p');
         meaning.className = 'card-meaning';
-        meaning.textContent = entry.meaning;
+        appendMeaningText(meaning, entry.meaning);
         content.append(meaning);
       }
 
@@ -1796,6 +1987,9 @@
     function syncChrome() {
       shuffleButton.disabled = !isReady || isTransitioning || isImporting;
       importButton.disabled = !isReady || isTransitioning || isImporting;
+      cardLayer.querySelectorAll('.study-mode-button').forEach((button) => {
+        button.disabled = !isReady || isTransitioning || isImporting;
+      });
       if (!deck.length) {
         previousButton.disabled = true;
         nextButton.disabled = true;
@@ -1824,10 +2018,12 @@
       bringCurrentCardForward(cards);
       cardLayer.setAttribute('aria-busy', 'false');
       syncChrome();
+      window.requestAnimationFrame(focusCurrentSpellingInput);
     }
 
     function moveDeck(direction) {
       if (isTransitioning) return;
+      cancelSpellingAdvance();
       const target = position + direction;
       if (target < 0) return;
       if (target >= deck.length) {
@@ -1885,6 +2081,7 @@
 
     function shuffle() {
       window.clearTimeout(transitionTimer);
+      cancelSpellingAdvance();
       isTransitioning = false;
       exitPoints.clear();
       cardLayer.replaceChildren();
@@ -1920,7 +2117,17 @@
       setSettingsOpen(!document.body.classList.contains('settings-open'));
     });
     cardLayer.addEventListener('click', (event) => {
-      if (event.target instanceof Element && event.target.closest('.sound-button')) speak();
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest('.study-mode-button')) {
+        cycleStudyMode();
+        return;
+      }
+      if (event.target.closest('.sound-button')) speak();
+    });
+    cardLayer.addEventListener('input', (event) => {
+      if (event.target instanceof HTMLInputElement && event.target.matches('.card-spelling-input')) {
+        checkSpellingInput(event.target);
+      }
     });
     importButton.addEventListener('click', () => importInput.click());
     importInput.addEventListener('change', () => importBooks(Array.from(importInput.files || [])));
@@ -1934,6 +2141,8 @@
         return;
       }
       if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const isTextEntry = event.target instanceof HTMLElement && Boolean(event.target.closest('input, textarea, [contenteditable="true"]'));
+      if (isTextEntry) return;
       const isInteractive = event.target instanceof HTMLElement && Boolean(event.target.closest('button, input, a'));
       if (isInteractive && (event.key === ' ' || event.key === 'Enter')) return;
       if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
