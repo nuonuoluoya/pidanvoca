@@ -4,6 +4,10 @@
 
 `纯 HTML / CSS / JavaScript` · `无需安装依赖` · `支持离线使用` · `本地保存学习设置`
 
+## 在线使用
+
+**[打开随机单词本 →](https://nuonuoluoya.github.io/pidanvoca/)**
+
 ## 功能亮点
 
 - **动态词卡**：3D 卡片堆叠与自然的左右切换动画，支持鼠标和键盘操作。
@@ -107,4 +111,3 @@ node build-vocabulary.js
 - 推荐使用较新版本的 Chrome、Edge、Firefox 或 Safari。
 - 单词发音依赖浏览器的 Web Speech API；不同系统可用的英文语音可能不同。
 - Cambridge Dictionary 查询需要网络连接，其余核心词卡功能可在本地运行。
-
