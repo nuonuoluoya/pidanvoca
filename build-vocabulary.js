@@ -508,7 +508,8 @@ const output = `<!doctype html>
     .quiet-button,
     .nav-button,
     .sound-button,
-    .dictionary-button {
+    .dictionary-button,
+    .study-mode-button {
       border: 0;
       cursor: pointer;
       transition: transform 160ms ease, color 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
@@ -564,6 +565,81 @@ const output = `<!doctype html>
     .toast.is-visible { opacity: 1; transform: translate(-50%, -50%); }
     .toast.is-error { color: #a83a3a; border-color: rgba(190,72,72,0.22); }
 
+    .study-complete-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 12;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(225, 237, 248, 0.42);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+      backdrop-filter: blur(8px);
+    }
+
+    .study-complete-backdrop[hidden] { display: none; }
+    .study-complete-backdrop.is-visible { opacity: 1; pointer-events: auto; }
+
+    .study-complete-panel {
+      width: min(360px, calc(100vw - 40px));
+      padding: 30px 28px 26px;
+      border: 1px solid rgba(112, 148, 180, 0.2);
+      border-radius: 24px;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 28px 80px rgba(61, 86, 114, 0.2), inset 0 1px 0 rgba(255,255,255,0.96);
+      text-align: center;
+      opacity: 0;
+      transform: translateY(14px) scale(0.97);
+      transition: opacity 220ms ease, transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .study-complete-backdrop.is-visible .study-complete-panel { opacity: 1; transform: translateY(-4vh) scale(1); }
+
+    .study-complete-icon {
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 16px;
+      border: 1px solid rgba(69, 158, 221, 0.22);
+      border-radius: 18px;
+      color: #4ba7df;
+      background: linear-gradient(145deg, #f4fbff, #e7f5ff);
+      box-shadow: 0 10px 26px rgba(75, 167, 223, 0.14);
+    }
+
+    .study-complete-icon .icon { width: 28px; height: 28px; stroke-width: 2.4; }
+    .study-complete-panel h2 { margin: 0; font-size: 24px; letter-spacing: -0.025em; }
+    .study-complete-score { margin: 13px 0 4px; color: #2f7fb8; font-size: 30px; font-weight: 780; font-variant-numeric: tabular-nums; }
+    .study-complete-detail { margin: 0; color: #78899b; font-size: 14px; line-height: 1.6; }
+
+    .study-complete-actions {
+      display: grid;
+      gap: 9px;
+      margin-top: 23px;
+    }
+
+    .study-complete-button {
+      min-height: 46px;
+      padding: 0 18px;
+      border: 1px solid rgba(61, 143, 203, 0.18);
+      border-radius: 14px;
+      color: #3f617d;
+      background: #f4f9fd;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 160ms ease, color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+    }
+
+    .study-complete-button:hover { color: #176fbf; background: #eaf6ff; }
+    .study-complete-button:active { transform: scale(0.98); }
+    .study-complete-button--primary { color: #fff; border-color: transparent; background: linear-gradient(135deg, #69b7e8, #499bd5); box-shadow: 0 12px 26px rgba(64, 145, 204, 0.22); }
+    .study-complete-button--primary:hover { color: #fff; background: linear-gradient(135deg, #5fafe2, #3e91ce); }
+
     .word-row {
       display: flex;
       align-items: center;
@@ -581,7 +657,8 @@ const output = `<!doctype html>
     }
 
     .sound-button,
-    .dictionary-button {
+    .dictionary-button,
+    .study-mode-button {
       flex: 0 0 auto;
       width: 42px;
       height: 42px;
@@ -594,10 +671,23 @@ const output = `<!doctype html>
     }
 
     .sound-button:hover,
-    .dictionary-button:hover {
+    .dictionary-button:hover,
+    .study-mode-button:hover {
       color: var(--accent);
       background: #e8f2ff;
     }
+
+    body:not([data-study-mode="full"]) .study-mode-button {
+      color: var(--accent);
+      background: rgba(220, 238, 255, 0.82);
+      box-shadow: inset 0 0 0 1px rgba(24, 120, 242, 0.08);
+    }
+
+    .study-mode-button .study-mode-icon { display: none; }
+    body[data-study-mode="full"] .study-mode-icon--full,
+    body[data-study-mode="word-only"] .study-mode-icon--word,
+    body[data-study-mode="spelling"] .study-mode-icon--spelling { display: inline; }
+    .study-mode-button:disabled { opacity: 0.46; cursor: wait; }
 
     .phonetic {
       min-height: 25px;
@@ -709,8 +799,22 @@ const output = `<!doctype html>
       background: linear-gradient(145deg, rgba(238,248,255,0.98), rgba(201,229,247,0.94));
       box-shadow: 0 8px 24px rgba(67,125,166,0.12), inset 0 1px 0 rgba(255,255,255,0.86);
       cursor: pointer;
-      transition: transform 220ms ease, color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+      isolation: isolate;
+      overflow: hidden;
+      transition: transform 220ms ease, color 320ms ease, border-color 440ms ease, box-shadow 440ms ease;
       backdrop-filter: blur(14px);
+    }
+
+    .settings-toggle::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      border-radius: inherit;
+      background: linear-gradient(145deg, #ffffff 0%, #fdfefe 48%, #f2f6fa 100%);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 440ms cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .settings-toggle:hover {
@@ -720,7 +824,18 @@ const output = `<!doctype html>
     }
 
     .settings-toggle:active { transform: scale(0.94); }
-    .settings-toggle .icon { transition: transform 640ms cubic-bezier(0.4, 0, 0.2, 1); }
+    .settings-toggle .icon {
+      position: relative;
+      z-index: 1;
+      transition: transform 640ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    body.settings-open .settings-toggle {
+      border-color: rgba(150, 168, 185, 0.2);
+      box-shadow: 0 8px 24px rgba(73,96,120,0.1), inset 0 1px 0 rgba(255,255,255,0.96);
+    }
+
+    body.settings-open .settings-toggle::before { opacity: 1; }
     body.settings-open .settings-toggle .icon { transform: rotate(52deg); }
 
     .settings-drawer {
@@ -801,6 +916,119 @@ const output = `<!doctype html>
 
     .settings-action[aria-expanded="true"] .settings-action__chevron { transform: rotate(180deg); }
 
+    .study-size-panel {
+      margin: -2px 0 4px;
+      padding: 13px;
+      border: 1px solid rgba(105, 142, 174, 0.12);
+      border-radius: 13px;
+      background: rgba(244, 249, 253, 0.78);
+      animation: study-size-reveal 200ms ease both;
+    }
+
+    .study-size-panel[hidden] { display: none; }
+
+    @keyframes study-size-reveal {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .study-size-panel__heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 0 2px 7px;
+      color: #49647c;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .study-size-panel__value {
+      padding: 5px 9px;
+      border: 1px solid rgba(69, 151, 210, 0.14);
+      border-radius: 999px;
+      color: #4f85ad;
+      background: rgba(234, 246, 255, 0.94);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .study-size-panel__hint {
+      margin: 0 2px 11px;
+      color: #8393a3;
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .study-size-presets {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .study-size-preset {
+      min-height: 36px;
+      padding: 0 7px;
+      border: 1px solid rgba(105, 142, 174, 0.13);
+      border-radius: 11px;
+      color: #536b81;
+      background: rgba(255,255,255,0.86);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 720;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+      transition: transform 150ms ease, color 150ms ease, background 150ms ease, border-color 150ms ease;
+    }
+
+    .study-size-preset:hover { color: #176fbf; border-color: rgba(24,120,242,0.18); background: #fff; }
+    .study-size-preset:active { transform: scale(0.97); }
+    .study-size-preset.is-selected { color: #176fbf; border-color: rgba(24,120,242,0.22); background: #e6f4ff; box-shadow: inset 0 1px 0 rgba(255,255,255,0.9); }
+
+    .study-size-custom {
+      display: grid;
+      grid-template-columns: 36px minmax(54px, 1fr) 36px 54px;
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .study-size-step,
+    .study-size-apply {
+      min-height: 36px;
+      border: 1px solid rgba(105, 142, 174, 0.13);
+      border-radius: 11px;
+      color: #58728a;
+      background: rgba(255,255,255,0.9);
+      font: inherit;
+      font-weight: 760;
+      cursor: pointer;
+    }
+
+    .study-size-step:hover,
+    .study-size-apply:hover { color: #176fbf; border-color: rgba(24,120,242,0.18); background: #fff; }
+
+    .study-size-input {
+      min-width: 0;
+      border: 1px solid rgba(105, 142, 174, 0.16);
+      border-radius: 11px;
+      color: #3f5a72;
+      background: #fff;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 740;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      outline: none;
+    }
+
+    .study-size-input:focus { border-color: rgba(24,120,242,0.4); box-shadow: 0 0 0 3px rgba(24,120,242,0.09); }
+    .study-size-custom.is-selected .study-size-input { color: #176fbf; border-color: rgba(24,120,242,0.28); background: #eef8ff; }
+    .study-size-input::-webkit-inner-spin-button,
+    .study-size-input::-webkit-outer-spin-button { margin: 0; appearance: none; }
+    .study-size-apply { color: #2e78ad; background: #eaf6ff; font-size: 12px; }
+
     .wordbook-panel {
       margin: 2px 0 6px;
       padding: 12px;
@@ -827,6 +1055,12 @@ const output = `<!doctype html>
       gap: 7px;
     }
 
+    .wordbook-option-stack {
+      min-width: 0;
+      display: grid;
+      gap: 7px;
+    }
+
     .wordbook-option-row {
       min-width: 0;
       display: grid;
@@ -839,7 +1073,7 @@ const output = `<!doctype html>
       width: 100%;
       min-width: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto 14px;
       align-items: center;
       gap: 10px;
       padding: 11px 12px;
@@ -865,6 +1099,20 @@ const output = `<!doctype html>
       border-color: rgba(24,120,242,0.2);
       background: #eaf5ff;
     }
+
+    .wordbook-option__chevron {
+      width: 14px;
+      height: 14px;
+      color: #91a5b8;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: transform 180ms ease;
+    }
+
+    .wordbook-option[aria-expanded="true"] .wordbook-option__chevron { transform: rotate(90deg); }
 
     .wordbook-option__name {
       overflow: hidden;
@@ -947,9 +1195,11 @@ const output = `<!doctype html>
     }
 
     .nav-button__arrow-base,
-    .nav-button__arrow-flow {
+    .nav-button__arrow-flow,
+    .nav-button__completion-check {
       fill: none;
       stroke-linejoin: miter;
+      transition: opacity 180ms ease;
     }
 
     .nav-button__arrow-base {
@@ -982,6 +1232,18 @@ const output = `<!doctype html>
 
     .nav-button--next .nav-button__arrow-flow--sheen { animation-delay: -1.025s; }
     .nav-button--next .nav-button__arrow-flow--ripple { animation-delay: -0.625s; }
+
+    .nav-button__completion-check {
+      stroke: currentColor;
+      stroke-width: 3.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0;
+    }
+
+    .nav-button.is-completion .nav-button__arrow-base,
+    .nav-button.is-completion .nav-button__arrow-flow { opacity: 0; }
+    .nav-button.is-completion .nav-button__completion-check { opacity: 1; }
 
     @keyframes nav-button-path-flow {
       from { stroke-dashoffset: 0; }
@@ -1243,7 +1505,8 @@ const output = `<!doctype html>
     .deck-card > * { transition: opacity 420ms linear; }
     .deck-card:not([data-offset="0"]) > * { opacity: 0; visibility: hidden; }
     .deck-card:not([data-offset="0"]) .sound-button,
-    .deck-card:not([data-offset="0"]) .dictionary-button { display: none; }
+    .deck-card:not([data-offset="0"]) .dictionary-button,
+    .deck-card:not([data-offset="0"]) .study-mode-button { display: none; }
     .deck-card.is-flying-out > *,
     .deck-card.is-yielding > * { opacity: 1 !important; visibility: visible !important; }
     .deck-card.is-incoming > * { opacity: 0 !important; visibility: visible !important; }
@@ -1275,8 +1538,56 @@ const output = `<!doctype html>
       font-weight: 760;
     }
 
+    .card-spelling-form {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: none;
+      align-items: flex-end;
+      margin: 0;
+    }
+
+    .card-spelling-input {
+      width: 100%;
+      min-width: 0;
+      padding: 4px 8px 9px;
+      border: 0;
+      border-bottom: 2px solid rgba(111, 136, 164, 0.46);
+      border-radius: 10px 10px 3px 3px;
+      outline: 0;
+      color: var(--text);
+      background: transparent;
+      font: inherit;
+      font-size: clamp(38px, 4.4vw, 58px);
+      line-height: 1;
+      letter-spacing: -0.035em;
+      font-weight: 730;
+      transition: border-color 180ms ease, background 220ms ease, box-shadow 180ms ease;
+    }
+
+    .card-spelling-input:focus {
+      border-bottom-color: rgba(24, 120, 242, 0.72);
+      box-shadow: 0 5px 10px -8px rgba(24, 120, 242, 0.58);
+    }
+
+    .card-spelling-input.is-correct {
+      border-bottom-color: rgba(67, 155, 222, 0.62);
+      background: rgba(126, 201, 254, 0.3);
+      box-shadow: 0 8px 24px rgba(89, 165, 224, 0.12);
+    }
+
+    body[data-study-mode="spelling"] .card-word { display: none; }
+    body[data-study-mode="spelling"] .card-spelling-form { display: flex; }
+    body[data-study-mode="spelling"] .card-word-row { align-items: flex-end; }
+    body[data-study-mode="spelling"] .card-tense-info { display: none; }
+
+    body[data-study-mode="word-only"] .card-progress-count,
+    body[data-study-mode="word-only"] .card-phonetic,
+    body[data-study-mode="word-only"] .card-meaning,
+    body[data-study-mode="word-only"] .card-notes { display: none; }
+
     .deck-card .sound-button,
-    .deck-card .dictionary-button {
+    .deck-card .dictionary-button,
+    .deck-card .study-mode-button {
       width: 40px;
       height: 40px;
     }
@@ -1411,6 +1722,15 @@ const output = `<!doctype html>
       }
 
       .card-word { font-size: clamp(38px, 11vw, 50px); }
+      .card-word-row { gap: 9px; }
+      .card-spelling-input {
+        padding-right: 5px;
+        padding-left: 5px;
+        font-size: clamp(32px, 9.6vw, 44px);
+      }
+      .deck-card .sound-button,
+      .deck-card .dictionary-button,
+      .deck-card .study-mode-button { width: 36px; height: 36px; }
       .card-phonetic { margin-top: 22px; font-size: 15px; }
       .card-meaning { margin-top: 20px; font-size: 17px; }
       .card-notes { margin-top: 28px; padding-top: 25px; }
@@ -1436,11 +1756,12 @@ const output = `<!doctype html>
       .app { transition-duration: 280ms !important; }
       .app::after,
       .settings-drawer,
+      .settings-toggle::before,
       .settings-toggle .icon { transition-duration: 220ms !important; }
     }
   </style>
 </head>
-<body>
+<body data-study-mode="full">
   <button class="settings-toggle" id="settingsButton" type="button" aria-label="打开设置" aria-controls="settingsDrawer" aria-expanded="false" title="打开设置">
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15.03 1.7 1.7 0 0 0 3.08 14H3v-4h.08A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.06-.06L7.03 4.2l.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.08V3h4v.08a1.7 1.7 0 0 0 1.03 1.52 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"></path></svg>
   </button>
@@ -1462,6 +1783,27 @@ const output = `<!doctype html>
           <p class="wordbook-panel__label" id="customWordbookLabel">我的单词本</p>
           <div class="wordbook-list" id="customWordbookList"></div>
         </section>
+      </div>
+      <div class="study-size-panel" id="studySizePanel" hidden>
+        <div class="study-size-panel__heading">
+          <span>每组背词数量</span>
+          <span class="study-size-panel__value" id="studySizeValue">30 词</span>
+        </div>
+        <p class="study-size-panel__hint" id="studySizeHint">完整词序按组推进，整轮结束前不会重复。</p>
+        <div class="study-size-presets" id="studySizePresets" role="group" aria-label="选择每组词数">
+          <button class="study-size-preset" type="button" data-study-size="10" aria-pressed="false">10</button>
+          <button class="study-size-preset" type="button" data-study-size="20" aria-pressed="false">20</button>
+          <button class="study-size-preset" type="button" data-study-size="30" aria-pressed="false">30</button>
+          <button class="study-size-preset" type="button" data-study-size="50" aria-pressed="false">50</button>
+          <button class="study-size-preset" type="button" data-study-size="100" aria-pressed="false">100</button>
+          <button class="study-size-preset" type="button" data-study-size="all" aria-pressed="false">全部</button>
+        </div>
+        <div class="study-size-custom" id="studySizeCustom" aria-label="自定义每组词数">
+          <button class="study-size-step" id="studySizeDecrease" type="button" aria-label="减少每组词数">−</button>
+          <input class="study-size-input" id="studySizeInput" type="number" min="5" max="500" step="5" value="30" inputmode="numeric" aria-label="自定义每组词数，5到500">
+          <button class="study-size-step" id="studySizeIncrease" type="button" aria-label="增加每组词数">+</button>
+          <button class="study-size-apply" id="studySizeApply" type="button">确定</button>
+        </div>
       </div>
       <button class="settings-action" id="shuffleButton" type="button" aria-label="随机重排" title="重新随机排序（R）">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5"></path><path d="M4 20 21 3"></path><path d="M21 16v5h-5"></path><path d="m15 15 6 6"></path><path d="M4 4l5 5"></path></svg>
@@ -1498,14 +1840,31 @@ const output = `<!doctype html>
               <path class="nav-button__arrow-base" d="M12.804 3 18 12l-5.196 9"></path>
               <path class="nav-button__arrow-flow nav-button__arrow-flow--sheen" pathLength="100" d="M12.804 3 18 12l-5.196 9"></path>
               <path class="nav-button__arrow-flow nav-button__arrow-flow--ripple" pathLength="100" d="M12.804 3 18 12l-5.196 9"></path>
+              <path class="nav-button__completion-check" d="m5.5 12.5 4.2 4.2L18.8 7.5"></path>
             </svg>
           </span>
         </button>
       </nav>
 
-      <div class="toast" id="importStatus" role="status" aria-live="polite"></div>
     </section>
   </main>
+
+  <div class="toast" id="importStatus" role="status" aria-live="polite"></div>
+
+  <div class="study-complete-backdrop" id="studyCompleteBackdrop" hidden>
+    <section class="study-complete-panel" role="dialog" aria-modal="true" aria-labelledby="studyCompleteTitle" aria-describedby="studyCompleteDetail">
+      <div class="study-complete-icon" aria-hidden="true">
+        <svg class="icon" viewBox="0 0 24 24"><path d="m5 12.5 4.3 4.3L19 7"></path></svg>
+      </div>
+      <h2 id="studyCompleteTitle">本组完成</h2>
+      <p class="study-complete-score" id="studyCompleteScore">30 / 30</p>
+      <p class="study-complete-detail" id="studyCompleteDetail">词本中还有更多未出现的单词</p>
+      <div class="study-complete-actions">
+        <button class="study-complete-button study-complete-button--primary" id="studyCompleteContinue" type="button">再来一组</button>
+        <button class="study-complete-button" id="studyCompleteAdjust" type="button">调整数量</button>
+      </div>
+    </section>
+  </div>
 
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
@@ -1514,10 +1873,61 @@ const output = `<!doctype html>
     const DEFAULT_BOOK = BUILT_IN_BOOKS.find((book) => book.id === DEFAULT_BOOK_ID) || BUILT_IN_BOOKS[0];
     const DEFAULT_WORDS = DEFAULT_BOOK.words;
     const vocabularyStorageKey = 'random-vocabulary:last-import:v1';
+    const studySizeStorageKey = 'random-vocabulary:study-size:v1';
+    const studySizePreferencesStorageKey = 'random-vocabulary:study-sizes:v2';
+    const defaultStudySize = 30;
+    const presetStudySizes = [10, 20, 30, 50, 100];
     const vocabularyDatabaseName = 'random-vocabulary';
     const vocabularyDatabaseStore = 'state';
     const vocabularyDatabaseRecord = 'last-import';
     let vocabularyDatabasePromise = null;
+
+    function normalizeStudySize(value) {
+      if (value === 'all' || value === Infinity) return Infinity;
+      const numericValue = Math.round(Number(value));
+      if (!Number.isFinite(numericValue)) return defaultStudySize;
+      return Math.min(500, Math.max(5, numericValue));
+    }
+
+    function loadStudySizePreference() {
+      try {
+        const savedValue = window.localStorage.getItem(studySizeStorageKey);
+        return savedValue === null ? defaultStudySize : normalizeStudySize(savedValue);
+      } catch {
+        return defaultStudySize;
+      }
+    }
+
+    function loadStudySizePreferences() {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(studySizePreferencesStorageKey) || '{}');
+        if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
+        return Object.fromEntries(Object.entries(saved).map(([bookId, value]) => [bookId, normalizeStudySize(value)]));
+      } catch {
+        return {};
+      }
+    }
+
+    function studySizePreferenceForBook(bookId) {
+      return Object.prototype.hasOwnProperty.call(studySizePreferences, bookId)
+        ? normalizeStudySize(studySizePreferences[bookId])
+        : legacyStudySizePreference;
+    }
+
+    function saveStudySizePreference(bookId, value) {
+      studySizePreferences[bookId] = value;
+      try {
+        const serializable = Object.fromEntries(Object.entries(studySizePreferences).map(([id, size]) => [id, size === Infinity ? 'all' : size]));
+        window.localStorage.setItem(studySizePreferencesStorageKey, JSON.stringify(serializable));
+      } catch {
+        // The setting remains active for this page even when storage is unavailable.
+      }
+    }
+
+    function studySizeLabel(value, spaced = true) {
+      if (value === Infinity) return '全部';
+      return String(value) + (spaced ? ' 词' : '词');
+    }
 
     function normalizeStoredWord(entry) {
       if (!entry || typeof entry !== 'object' || typeof entry.word !== 'string' || !entry.word.trim()) return null;
@@ -1686,6 +2096,15 @@ const output = `<!doctype html>
     const settingsDrawer = document.getElementById('settingsDrawer');
     const wordbookButton = document.getElementById('wordbookButton');
     const wordbookPanel = document.getElementById('wordbookPanel');
+    const studySizePanel = document.getElementById('studySizePanel');
+    const studySizeValue = document.getElementById('studySizeValue');
+    const studySizeHint = document.getElementById('studySizeHint');
+    const studySizePresets = document.getElementById('studySizePresets');
+    const studySizeCustom = document.getElementById('studySizeCustom');
+    const studySizeInput = document.getElementById('studySizeInput');
+    const studySizeDecrease = document.getElementById('studySizeDecrease');
+    const studySizeIncrease = document.getElementById('studySizeIncrease');
+    const studySizeApply = document.getElementById('studySizeApply');
     const builtInWordbookList = document.getElementById('builtInWordbookList');
     const customWordbookSection = document.getElementById('customWordbookSection');
     const customWordbookList = document.getElementById('customWordbookList');
@@ -1693,6 +2112,18 @@ const output = `<!doctype html>
     const importInput = document.getElementById('importInput');
     const importStatus = document.getElementById('importStatus');
     const shuffleButton = document.getElementById('shuffleButton');
+    const studyCompleteBackdrop = document.getElementById('studyCompleteBackdrop');
+    const studyCompleteTitle = document.getElementById('studyCompleteTitle');
+    const studyCompleteScore = document.getElementById('studyCompleteScore');
+    const studyCompleteDetail = document.getElementById('studyCompleteDetail');
+    const studyCompleteContinue = document.getElementById('studyCompleteContinue');
+    const studyCompleteAdjust = document.getElementById('studyCompleteAdjust');
+    const studyModes = ['full', 'word-only', 'spelling'];
+    const studyModeLabels = {
+      full: '完整显示',
+      'word-only': '只显示单词',
+      spelling: '拼写练习'
+    };
 
     previousButton.disabled = true;
     nextButton.disabled = true;
@@ -1702,14 +2133,28 @@ const output = `<!doctype html>
 
     let deck = [];
     let position = 0;
+    const legacyStudySizePreference = loadStudySizePreference();
+    let studySizePreferences = loadStudySizePreferences();
+    let studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
+    let studyGroups = [];
+    let studyGroupIndex = 0;
+    let expandedStudyBookId = null;
+    let isStudyCompleteOpen = false;
     let statusTimer = 0;
     let isTransitioning = false;
     let isReady = false;
     let isImporting = false;
     let transitionTimer = 0;
+    let spellingAdvanceTimer = 0;
+    let studyCompleteTimer = 0;
+    let studyMode = 'full';
     const visibleRadius = 3;
     const exitPoints = new Map();
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    function activeStudyBookKey() {
+      return activeBuiltInBookId || activeCustomBookId || 'combined-import';
+    }
 
     function createExitPoint() {
       const angle = Math.PI * (0.58 + Math.random() * 0.84);
@@ -1944,6 +2389,8 @@ const output = `<!doctype html>
         const total = replaceWithImportedWords(validBooks.flatMap((book) => book.entries));
         activeBuiltInBookId = null;
         storeImportedBooks(validBooks);
+        studySize = studySizePreferenceForBook(activeStudyBookKey());
+        expandedStudyBookId = activeStudyBookKey();
         renderWordbookLists();
         const remembered = await rememberVocabulary({ fileNames: validBooks.map((book) => book.fileName) });
         const skipped = files.length - validBooks.length;
@@ -1981,14 +2428,103 @@ const output = `<!doctype html>
       return nextDeck;
     }
 
+    function cancelSpellingAdvance() {
+      window.clearTimeout(spellingAdvanceTimer);
+      spellingAdvanceTimer = 0;
+    }
+
+    function normalizeSpelling(value) {
+      return String(value).trim().toLocaleLowerCase('en-US').replace(/\\s+/g, ' ');
+    }
+
+    function appendMeaningText(element, value) {
+      const text = String(value);
+      const tensePattern = /时\\s*态\\s*[:：][^\\r\\n]*/g;
+      let cursor = 0;
+      for (const match of text.matchAll(tensePattern)) {
+        if (match.index > cursor) element.append(document.createTextNode(text.slice(cursor, match.index)));
+        const tense = document.createElement('span');
+        tense.className = 'card-tense-info';
+        tense.textContent = match[0];
+        element.append(tense);
+        cursor = match.index + match[0].length;
+      }
+      if (cursor < text.length) element.append(document.createTextNode(text.slice(cursor)));
+    }
+
+    function syncStudyModeButton(button) {
+      const currentIndex = studyModes.indexOf(studyMode);
+      const nextMode = studyModes[(currentIndex + 1) % studyModes.length];
+      const description = '当前：' + studyModeLabels[studyMode] + '；点击切换到' + studyModeLabels[nextMode];
+      button.title = description;
+      button.setAttribute('aria-label', description);
+    }
+
+    function syncStudyModeButtons() {
+      cardLayer.querySelectorAll('.study-mode-button').forEach(syncStudyModeButton);
+    }
+
+    function resetSpellingInputs() {
+      cardLayer.querySelectorAll('.card-spelling-input').forEach((input) => {
+        input.value = '';
+        input.readOnly = false;
+        input.classList.remove('is-correct');
+        input.removeAttribute('data-accepted');
+        input.setAttribute('aria-label', '输入当前单词');
+      });
+    }
+
+    function focusCurrentSpellingInput() {
+      if (studyMode !== 'spelling' || isTransitioning) return;
+      const input = cardLayer.querySelector('.deck-card[data-offset="0"] .card-spelling-input:not([readonly])');
+      if (input) input.focus({ preventScroll: true });
+    }
+
+    function setStudyMode(nextMode) {
+      if (!studyModes.includes(nextMode) || nextMode === studyMode) return;
+      cancelSpellingAdvance();
+      studyMode = nextMode;
+      document.body.dataset.studyMode = studyMode;
+      resetSpellingInputs();
+      syncStudyModeButtons();
+      if (studyMode === 'spelling') window.requestAnimationFrame(focusCurrentSpellingInput);
+    }
+
+    function cycleStudyMode() {
+      if (isTransitioning || isImporting) return;
+      const currentIndex = studyModes.indexOf(studyMode);
+      setStudyMode(studyModes[(currentIndex + 1) % studyModes.length]);
+    }
+
+    function checkSpellingInput(input) {
+      if (studyMode !== 'spelling' || isTransitioning || input.dataset.accepted === 'true') return;
+      const card = input.closest('.deck-card[data-offset="0"]');
+      if (!card) return;
+      const deckPosition = Number(card.dataset.deckPosition);
+      if (deckPosition !== position) return;
+      const answer = WORDS[deck[deckPosition]].word;
+      if (normalizeSpelling(input.value) !== normalizeSpelling(answer)) return;
+
+      input.dataset.accepted = 'true';
+      input.readOnly = true;
+      input.classList.add('is-correct');
+      input.setAttribute('aria-label', '拼写正确，正在切换到下一个单词');
+      cancelSpellingAdvance();
+      spellingAdvanceTimer = window.setTimeout(() => {
+        spellingAdvanceTimer = 0;
+        if (studyMode === 'spelling' && position === deckPosition) next();
+      }, 600);
+    }
+
     function setCardOffset(card, offset) {
       const isCurrent = offset === 0;
       card.dataset.offset = String(offset);
       card.setAttribute('aria-hidden', String(!isCurrent));
       const heading = card.querySelector('.card-word');
-      const sound = card.querySelector('.sound-button');
       if (heading) heading.setAttribute('aria-level', isCurrent ? '1' : '2');
-      if (sound) sound.tabIndex = isCurrent ? 0 : -1;
+      card.querySelectorAll('.sound-button, .dictionary-button, .study-mode-button, .card-spelling-input').forEach((control) => {
+        control.tabIndex = isCurrent ? 0 : -1;
+      });
     }
 
     function progressLabelFor(progressValue) {
@@ -1997,22 +2533,92 @@ const output = `<!doctype html>
       return progressValue.toFixed(1) + '%';
     }
 
+    function createStudyGroup(start, requestedSize = studySize) {
+      const end = requestedSize === Infinity ? deck.length : Math.min(deck.length, start + requestedSize);
+      return { start, end, requestedSize };
+    }
+
+    function currentStudyGroup() {
+      return studyGroups[studyGroupIndex] || null;
+    }
+
+    function studyGroupForPosition(deckPosition) {
+      return studyGroups.find((group) => deckPosition >= group.start && deckPosition < group.end) || currentStudyGroup();
+    }
+
+    function studyProgressFor(deckPosition) {
+      const group = studyGroupForPosition(deckPosition) || { start: 0, end: deck.length };
+      const total = Math.max(1, group.end - group.start);
+      const current = Math.min(total, Math.max(1, deckPosition - group.start + 1));
+      const progressValue = total <= 1 ? 100 : (current - 1) / (total - 1) * 100;
+      return { group, current, total, progressValue };
+    }
+
+    function updateStudySizeControls() {
+      const group = currentStudyGroup();
+      const hasPendingSize = Boolean(group && studyGroupIndex === studyGroups.length - 1 && position > group.start && group.requestedSize !== studySize);
+      studySizeValue.textContent = hasPendingSize ? '下组 ' + studySizeLabel(studySize, false) : studySizeLabel(studySize);
+      studySizeHint.textContent = hasPendingSize
+        ? '当前组保持 ' + studySizeLabel(group.requestedSize) + '，新数量从下一组生效。'
+        : '完整词序按组推进，整轮结束前不会重复。';
+
+      studySizePresets.querySelectorAll('[data-study-size]').forEach((button) => {
+        const buttonValue = button.dataset.studySize === 'all' ? Infinity : Number(button.dataset.studySize);
+        const isSelected = buttonValue === studySize;
+        button.classList.toggle('is-selected', isSelected);
+        button.setAttribute('aria-pressed', String(isSelected));
+      });
+
+      studySizeCustom.classList.toggle('is-selected', studySize !== Infinity && !presetStudySizes.includes(studySize));
+
+      if (studySize !== Infinity) studySizeInput.value = String(studySize);
+    }
+
+    function refreshCurrentCard() {
+      const currentCard = cardLayer.querySelector('.deck-card[data-offset="0"]');
+      if (currentCard) stripCardContent(currentCard);
+      renderStable();
+    }
+
+    function setStudySizePreference(value) {
+      const nextStudySize = normalizeStudySize(value);
+      studySize = nextStudySize;
+      saveStudySizePreference(activeStudyBookKey(), studySize);
+
+      const group = currentStudyGroup();
+      const canApplyImmediately = Boolean(group && studyGroupIndex === studyGroups.length - 1 && position === group.start);
+      if (canApplyImmediately) {
+        studyGroups[studyGroupIndex] = createStudyGroup(group.start, studySize);
+        updateStudySizeControls();
+        refreshCurrentCard();
+        showImportStatus('本组已调整为' + studySizeLabel(studyGroups[studyGroupIndex].end - studyGroups[studyGroupIndex].start));
+        setSettingsOpen(false);
+        return;
+      }
+
+      updateStudySizeControls();
+      if (group) showImportStatus('已设为每组' + studySizeLabel(studySize) + '，将从下一组生效');
+      setSettingsOpen(false);
+    }
+
     function createCardProgressCount(deckPosition) {
+      const metrics = studyProgressFor(deckPosition);
       const progress = document.createElement('div');
       progress.className = 'card-progress-count';
       progress.setAttribute('aria-hidden', 'true');
       const current = document.createElement('strong');
-      current.textContent = deckPosition + 1;
+      current.textContent = metrics.current;
       const separator = document.createElement('span');
       separator.textContent = '/';
       const total = document.createElement('span');
-      total.textContent = deck.length;
+      total.textContent = metrics.total;
       progress.append(current, separator, total);
       return progress;
     }
 
     function createWaterProgress(deckPosition) {
-      const progressValue = deck.length <= 1 ? 100 : deckPosition / (deck.length - 1) * 100;
+      const metrics = studyProgressFor(deckPosition);
+      const progressValue = metrics.progressValue;
       const progressLabel = progressLabelFor(progressValue);
       const water = document.createElement('div');
       water.className = 'card-water-progress';
@@ -2021,7 +2627,8 @@ const output = `<!doctype html>
       water.setAttribute('aria-valuemin', '0');
       water.setAttribute('aria-valuemax', '100');
       water.setAttribute('aria-valuenow', String(Math.round(progressValue * 10) / 10));
-      water.setAttribute('aria-valuetext', '第 ' + (deckPosition + 1) + ' 个，共 ' + deck.length + ' 个，完成 ' + progressLabel);
+      const groupNumber = Math.max(1, studyGroups.indexOf(metrics.group) + 1);
+      water.setAttribute('aria-valuetext', '第 ' + groupNumber + ' 组，第 ' + metrics.current + ' 个，共 ' + metrics.total + ' 个；整个词本 ' + deck.length + ' 个，完成 ' + progressLabel);
       water.style.setProperty('--water-level', progressValue + '%');
       water.style.setProperty('--wave-phase', -performance.now() + 'ms');
       water.innerHTML = '<div class="card-water-progress__fill" aria-hidden="true">'
@@ -2079,7 +2686,28 @@ const output = `<!doctype html>
       dictionary.setAttribute('aria-label', '在 Cambridge Dictionary 中查询 ' + entry.word);
       dictionary.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3H6.5A2.5 2.5 0 0 0 4 19.5v-14Z"></path><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H14v17a3 3 0 0 1 3-3h.5a2.5 2.5 0 0 1 2.5 2.5v-14Z"></path></svg>';
 
-      wordRow.append(heading, sound, dictionary);
+      const studyModeButton = document.createElement('button');
+      studyModeButton.className = 'study-mode-button';
+      studyModeButton.type = 'button';
+      studyModeButton.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">'
+        + '<g class="study-mode-icon study-mode-icon--full"><path d="M5 6h14M5 12h14M5 18h10"></path></g>'
+        + '<g class="study-mode-icon study-mode-icon--word"><path d="m7 18 3.4-12h3.2L17 18M8.5 14h7"></path></g>'
+        + '<g class="study-mode-icon study-mode-icon--spelling"><path d="m5 16-.7 3.7L8 19l10.6-10.6-3-3L5 16Z"></path><path d="M4 21h16"></path></g>'
+        + '</svg>';
+      syncStudyModeButton(studyModeButton);
+
+      const spellingForm = document.createElement('div');
+      spellingForm.className = 'card-spelling-form';
+      const spellingInput = document.createElement('input');
+      spellingInput.className = 'card-spelling-input';
+      spellingInput.type = 'text';
+      spellingInput.autocomplete = 'off';
+      spellingInput.autocapitalize = 'none';
+      spellingInput.spellcheck = false;
+      spellingInput.setAttribute('aria-label', '输入当前单词');
+      spellingForm.append(spellingInput);
+
+      wordRow.append(heading, spellingForm, sound, dictionary, studyModeButton);
       content.append(wordRow);
 
       if (entry.phonetic) {
@@ -2092,7 +2720,7 @@ const output = `<!doctype html>
       if (entry.meaning) {
         const meaning = document.createElement('p');
         meaning.className = 'card-meaning';
-        meaning.textContent = entry.meaning;
+        appendMeaningText(meaning, entry.meaning);
         content.append(meaning);
       }
 
@@ -2158,22 +2786,98 @@ const output = `<!doctype html>
       return positions;
     }
 
+    function closeStudyComplete(restoreFocus = false) {
+      window.clearTimeout(studyCompleteTimer);
+      isStudyCompleteOpen = false;
+      studyCompleteBackdrop.classList.remove('is-visible');
+      studyCompleteTimer = window.setTimeout(() => {
+        if (!isStudyCompleteOpen) studyCompleteBackdrop.hidden = true;
+      }, 230);
+      if (restoreFocus) nextButton.focus();
+      syncChrome();
+    }
+
+    function showStudyComplete() {
+      const group = currentStudyGroup();
+      if (!group || isStudyCompleteOpen) return;
+      const groupTotal = Math.max(0, group.end - group.start);
+      const remaining = Math.max(0, deck.length - group.end);
+      const isRoundComplete = remaining === 0;
+      const nextGroupTotal = studySize === Infinity ? remaining : Math.min(studySize, remaining);
+
+      window.clearTimeout(studyCompleteTimer);
+      setSettingsOpen(false);
+      studyCompleteTitle.textContent = isRoundComplete ? '这一轮，收下了' : '这一组，收下了';
+      studyCompleteScore.textContent = groupTotal + ' / ' + groupTotal;
+      studyCompleteDetail.textContent = isRoundComplete
+        ? '已完成本词本的 ' + deck.length + ' 个单词，可以重新随机开始。'
+        : '词本中还有 ' + remaining + ' 个单词未出现。';
+      studyCompleteContinue.textContent = isRoundComplete ? '随机开始新一轮' : '再来 ' + nextGroupTotal + ' 词';
+      studyCompleteBackdrop.hidden = false;
+      isStudyCompleteOpen = true;
+      window.requestAnimationFrame(() => studyCompleteBackdrop.classList.add('is-visible'));
+      syncChrome();
+      window.setTimeout(() => studyCompleteContinue.focus(), 80);
+    }
+
+    function continueAfterStudyComplete() {
+      const group = currentStudyGroup();
+      if (!group) return;
+      if (group.end >= deck.length) {
+        closeStudyComplete();
+        shuffle();
+        showImportStatus('已重新随机排序，开始新一轮');
+        return;
+      }
+
+      studyGroups.splice(studyGroupIndex + 1);
+      studyGroups.push(createStudyGroup(group.end, studySize));
+      closeStudyComplete();
+      updateStudySizeControls();
+      moveDeck(1);
+    }
+
+    function adjustStudySizeAfterComplete() {
+      closeStudyComplete();
+      setSettingsOpen(true);
+      setWordbookPanelOpen(true);
+      expandedStudyBookId = activeStudyBookKey();
+      renderWordbookLists();
+      updateStudySizeControls();
+      window.setTimeout(() => {
+        scrollExpandedStudyBook();
+        const activeOption = document.querySelector('.wordbook-option-stack[data-book-id="' + CSS.escape(expandedStudyBookId) + '"] .wordbook-option');
+        if (activeOption instanceof HTMLButtonElement) activeOption.focus();
+      }, 80);
+    }
+
     function syncChrome() {
       shuffleButton.disabled = !isReady || isTransitioning || isImporting;
       importButton.disabled = !isReady || isTransitioning || isImporting;
       wordbookButton.disabled = !isReady || isTransitioning || isImporting;
+      studySizePanel.querySelectorAll('button, input').forEach((control) => {
+        control.disabled = !isReady || isTransitioning || isImporting;
+      });
+      cardLayer.querySelectorAll('.study-mode-button').forEach((button) => {
+        button.disabled = !isReady || isTransitioning || isImporting;
+      });
       if (!deck.length) {
         previousButton.disabled = true;
         nextButton.disabled = true;
         return;
       }
       const entry = WORDS[deck[position]];
-      previousButton.disabled = isTransitioning || position === 0;
-      const isLast = position === deck.length - 1;
-      nextButton.disabled = isTransitioning;
-      nextButton.setAttribute('aria-label', isLast ? '重新随机一轮' : '下一个单词');
-      nextButton.title = isLast ? '重新随机一轮（→）' : '下一个单词（→）';
+      const group = studyGroupForPosition(position);
+      const isLatestGroup = studyGroupIndex === studyGroups.length - 1;
+      const isGroupEnd = Boolean(group && position === group.end - 1 && isLatestGroup);
+      const isRoundEnd = isGroupEnd && group.end === deck.length;
+      previousButton.disabled = isTransitioning || isStudyCompleteOpen || position === 0;
+      nextButton.disabled = isTransitioning || isStudyCompleteOpen;
+      nextButton.classList.toggle('is-completion', isGroupEnd);
+      nextButton.setAttribute('aria-label', isRoundEnd ? '完成本轮' : (isGroupEnd ? '完成本组' : '下一个单词'));
+      nextButton.title = isRoundEnd ? '完成本轮（→）' : (isGroupEnd ? '完成本组（→）' : '下一个单词（→）');
       document.title = entry.word + ' · 随机单词本';
+      updateStudySizeControls();
     }
 
     function bringCurrentCardForward(cards) {
@@ -2190,16 +2894,26 @@ const output = `<!doctype html>
       bringCurrentCardForward(cards);
       cardLayer.setAttribute('aria-busy', 'false');
       syncChrome();
+      window.requestAnimationFrame(focusCurrentSpellingInput);
     }
 
     function moveDeck(direction) {
-      if (isTransitioning) return;
-      const target = position + direction;
+      if (isTransitioning || isStudyCompleteOpen) return;
+      cancelSpellingAdvance();
+      let target = position + direction;
       if (target < 0) return;
-      if (target >= deck.length) {
-        shuffle();
-        return;
+
+      const group = currentStudyGroup();
+      if (direction > 0 && group && target >= group.end) {
+        if (studyGroupIndex < studyGroups.length - 1) studyGroupIndex += 1;
+        else {
+          showStudyComplete();
+          return;
+        }
+      } else if (direction < 0 && group && target < group.start && studyGroupIndex > 0) {
+        studyGroupIndex -= 1;
       }
+      if (target >= deck.length) return showStudyComplete();
 
       if (reducedMotion.matches) {
         if (direction > 0) exitPointFor(position);
@@ -2215,7 +2929,7 @@ const output = `<!doctype html>
       const incomingCard = cards.find((card) => Number(card.dataset.deckPosition) === target);
       const incomingWater = incomingCard && incomingCard.querySelector('.card-water-progress');
       const targetWaterLevel = incomingWater && incomingWater.style.getPropertyValue('--water-level');
-      const currentWaterLevel = deck.length <= 1 ? 100 : position / (deck.length - 1) * 100;
+      const currentWaterLevel = studyProgressFor(position).progressValue;
       if (incomingWater) incomingWater.style.setProperty('--water-level', currentWaterLevel + '%');
 
       if (direction > 0) {
@@ -2251,11 +2965,16 @@ const output = `<!doctype html>
 
     function shuffle() {
       window.clearTimeout(transitionTimer);
+      cancelSpellingAdvance();
+      closeStudyComplete();
       isTransitioning = false;
       exitPoints.clear();
       cardLayer.replaceChildren();
       deck = createDeck();
       position = 0;
+      studyGroups = deck.length ? [createStudyGroup(0, studySize)] : [];
+      studyGroupIndex = 0;
+      updateStudySizeControls();
       renderStable();
     }
 
@@ -2277,6 +2996,29 @@ const output = `<!doctype html>
       wordbookPanel.hidden = !isOpen;
     }
 
+    function scrollExpandedStudyBook() {
+      if (!expandedStudyBookId) return;
+      const stack = document.querySelector('.wordbook-option-stack[data-book-id="' + CSS.escape(expandedStudyBookId) + '"]');
+      if (stack) stack.scrollIntoView({ block: 'nearest', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+    }
+
+    function setExpandedStudyBook(bookId, isOpen) {
+      expandedStudyBookId = isOpen ? bookId : null;
+      renderWordbookLists();
+      updateStudySizeControls();
+      if (expandedStudyBookId) window.setTimeout(scrollExpandedStudyBook, 80);
+    }
+
+    function stepStudySizeInput(direction) {
+      const currentValue = normalizeStudySize(studySizeInput.value || (studySize === Infinity ? defaultStudySize : studySize));
+      const numericValue = currentValue === Infinity ? defaultStudySize : currentValue;
+      studySizeInput.value = String(normalizeStudySize(numericValue + direction * 5));
+    }
+
+    function applyCustomStudySize() {
+      setStudySizePreference(studySizeInput.value);
+    }
+
     function createWordbookOption(book, source, isActive) {
       const button = document.createElement('button');
       button.className = 'wordbook-option';
@@ -2284,7 +3026,9 @@ const output = `<!doctype html>
       button.dataset.bookId = book.id;
       button.dataset.bookSource = source;
       button.setAttribute('aria-pressed', String(isActive));
-      button.setAttribute('aria-label', '使用单词本 ' + book.name + '，共 ' + book.words.length + ' 个词条');
+      button.setAttribute('aria-expanded', String(isActive && expandedStudyBookId === book.id));
+      button.setAttribute('aria-controls', 'studySizePanel');
+      button.setAttribute('aria-label', (isActive ? '当前单词本 ' : '使用单词本 ') + book.name + '，共 ' + book.words.length + ' 个词条' + (isActive ? '；点击设置每组数量' : ''));
 
       const name = document.createElement('span');
       name.className = 'wordbook-option__name';
@@ -2294,14 +3038,20 @@ const output = `<!doctype html>
       count.className = 'wordbook-option__count';
       count.textContent = book.words.length + ' 词';
 
-      button.append(name, count);
+      const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      chevron.classList.add('wordbook-option__chevron');
+      chevron.setAttribute('viewBox', '0 0 24 24');
+      chevron.setAttribute('aria-hidden', 'true');
+      chevron.innerHTML = '<path d="m9 6 6 6-6 6"></path>';
+
+      button.append(name, count, chevron);
       return button;
     }
 
-    function createCustomWordbookRow(book) {
+    function createCustomWordbookRow(book, isActive) {
       const row = document.createElement('div');
       row.className = 'wordbook-option-row';
-      row.append(createWordbookOption(book, 'custom', book.id === activeCustomBookId));
+      row.append(createWordbookOption(book, 'custom', isActive));
 
       const deleteButton = document.createElement('button');
       deleteButton.className = 'wordbook-delete';
@@ -2314,40 +3064,65 @@ const output = `<!doctype html>
       return row;
     }
 
+    function createWordbookOptionStack(book, source, isActive) {
+      const stack = document.createElement('div');
+      stack.className = 'wordbook-option-stack';
+      stack.dataset.bookId = book.id;
+      if (source === 'custom') stack.append(createCustomWordbookRow(book, isActive));
+      else stack.append(createWordbookOption(book, source, isActive));
+
+      if (isActive && expandedStudyBookId === book.id) {
+        studySizePanel.hidden = false;
+        stack.append(studySizePanel);
+      }
+      return stack;
+    }
+
     function renderWordbookLists() {
+      studySizePanel.hidden = true;
       const builtInFragment = document.createDocumentFragment();
       BUILT_IN_BOOKS.forEach((book) => {
-        builtInFragment.append(createWordbookOption(book, 'built-in', book.id === activeBuiltInBookId));
+        builtInFragment.append(createWordbookOptionStack(book, 'built-in', book.id === activeBuiltInBookId));
       });
       builtInWordbookList.replaceChildren(builtInFragment);
 
       const customFragment = document.createDocumentFragment();
+      const hasCombinedImport = !activeBuiltInBookId && !activeCustomBookId && WORDS.length > 0;
+      if (hasCombinedImport) {
+        customFragment.append(createWordbookOptionStack({ id: 'combined-import', name: '合并生词本', words: WORDS }, 'combined', true));
+      }
       customBooks.forEach((book) => {
-        customFragment.append(createCustomWordbookRow(book));
+        customFragment.append(createWordbookOptionStack(book, 'custom', book.id === activeCustomBookId));
       });
       customWordbookList.replaceChildren(customFragment);
-      customWordbookSection.hidden = customBooks.length === 0;
+      customWordbookSection.hidden = customBooks.length === 0 && !hasCombinedImport;
     }
 
     async function selectBuiltInBook(bookId) {
       if (!isReady || isTransitioning || isImporting) return;
       const book = BUILT_IN_BOOKS.find((entry) => entry.id === bookId);
       if (!book) return;
+      if (activeBuiltInBookId === book.id) {
+        setExpandedStudyBook(book.id, expandedStudyBookId !== book.id);
+        return;
+      }
 
       isImporting = true;
       WORDS = book.words;
       activeBuiltInBookId = book.id;
       activeCustomBookId = null;
+      studySize = studySizePreferenceForBook(book.id);
+      expandedStudyBookId = book.id;
       renderWordbookLists();
       shuffle();
-      setSettingsOpen(false);
+      window.setTimeout(scrollExpandedStudyBook, 80);
 
       const remembered = await rememberVocabulary({
         builtInBookId: book.id,
         customBookId: null,
         fileNames: [book.fileName]
       });
-      showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条' + (remembered ? '；下次打开将自动恢复' : '；浏览器未能保存本次选择'));
+      showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条；请选择每组数量' + (remembered ? '' : '；浏览器未能保存本次选择'));
       isImporting = false;
       syncChrome();
     }
@@ -2356,21 +3131,27 @@ const output = `<!doctype html>
       if (!isReady || isTransitioning || isImporting) return;
       const book = customBooks.find((entry) => entry.id === bookId);
       if (!book) return;
+      if (activeCustomBookId === book.id) {
+        setExpandedStudyBook(book.id, expandedStudyBookId !== book.id);
+        return;
+      }
 
       isImporting = true;
       WORDS = book.words;
       activeBuiltInBookId = null;
       activeCustomBookId = book.id;
+      studySize = studySizePreferenceForBook(book.id);
+      expandedStudyBookId = book.id;
       renderWordbookLists();
       shuffle();
-      setSettingsOpen(false);
+      window.setTimeout(scrollExpandedStudyBook, 80);
 
       const remembered = await rememberVocabulary({
         builtInBookId: null,
         customBookId: book.id,
         fileNames: [book.fileName]
       });
-      showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条' + (remembered ? '；下次打开将自动恢复' : '；浏览器未能保存本次选择'));
+      showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条；请选择每组数量' + (remembered ? '' : '；浏览器未能保存本次选择'));
       isImporting = false;
       syncChrome();
     }
@@ -2397,6 +3178,8 @@ const output = `<!doctype html>
         WORDS = DEFAULT_WORDS;
         activeBuiltInBookId = DEFAULT_BOOK.id;
         activeCustomBookId = null;
+        studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
+        expandedStudyBookId = null;
         shuffle();
       }
       renderWordbookLists();
@@ -2429,11 +3212,29 @@ const output = `<!doctype html>
     wordbookButton.addEventListener('click', () => {
       setWordbookPanelOpen(wordbookPanel.hidden);
     });
+    studySizePresets.addEventListener('click', (event) => {
+      const option = event.target instanceof Element ? event.target.closest('[data-study-size]') : null;
+      if (!(option instanceof HTMLButtonElement)) return;
+      setStudySizePreference(option.dataset.studySize === 'all' ? Infinity : option.dataset.studySize);
+    });
+    studySizeDecrease.addEventListener('click', () => stepStudySizeInput(-1));
+    studySizeIncrease.addEventListener('click', () => stepStudySizeInput(1));
+    studySizeApply.addEventListener('click', applyCustomStudySize);
+    studySizeInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      applyCustomStudySize();
+    });
     function handleWordbookOptionClick(event) {
       const option = event.target instanceof Element ? event.target.closest('.wordbook-option') : null;
       if (option instanceof HTMLButtonElement && option.dataset.bookId) {
-        if (option.dataset.bookSource === 'custom') selectCustomBook(option.dataset.bookId);
-        else selectBuiltInBook(option.dataset.bookId);
+        if (option.dataset.bookSource === 'combined') {
+          setExpandedStudyBook(option.dataset.bookId, expandedStudyBookId !== option.dataset.bookId);
+        } else if (option.dataset.bookSource === 'custom') {
+          selectCustomBook(option.dataset.bookId);
+        } else {
+          selectBuiltInBook(option.dataset.bookId);
+        }
       }
     }
     builtInWordbookList.addEventListener('click', handleWordbookOptionClick);
@@ -2446,13 +3247,40 @@ const output = `<!doctype html>
       handleWordbookOptionClick(event);
     });
     cardLayer.addEventListener('click', (event) => {
-      if (event.target instanceof Element && event.target.closest('.sound-button')) speak();
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest('.study-mode-button')) {
+        cycleStudyMode();
+        return;
+      }
+      if (event.target.closest('.sound-button')) speak();
+    });
+    cardLayer.addEventListener('input', (event) => {
+      if (event.target instanceof HTMLInputElement && event.target.matches('.card-spelling-input')) {
+        checkSpellingInput(event.target);
+      }
     });
     importButton.addEventListener('click', () => importInput.click());
     importInput.addEventListener('change', () => importBooks(Array.from(importInput.files || [])));
     shuffleButton.addEventListener('click', shuffle);
+    studyCompleteContinue.addEventListener('click', continueAfterStudyComplete);
+    studyCompleteAdjust.addEventListener('click', adjustStudySizeAfterComplete);
 
     window.addEventListener('keydown', (event) => {
+      if (isStudyCompleteOpen && event.key === 'Tab') {
+        const dialogButtons = [studyCompleteContinue, studyCompleteAdjust];
+        const currentIndex = dialogButtons.indexOf(document.activeElement);
+        const nextIndex = event.shiftKey
+          ? (currentIndex <= 0 ? dialogButtons.length - 1 : currentIndex - 1)
+          : (currentIndex >= dialogButtons.length - 1 ? 0 : currentIndex + 1);
+        event.preventDefault();
+        dialogButtons[nextIndex].focus();
+        return;
+      }
+      if (event.key === 'Escape' && isStudyCompleteOpen) {
+        event.preventDefault();
+        closeStudyComplete(true);
+        return;
+      }
       if (event.key === 'Escape' && document.body.classList.contains('settings-open')) {
         event.preventDefault();
         setSettingsOpen(false);
@@ -2460,6 +3288,8 @@ const output = `<!doctype html>
         return;
       }
       if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const isTextEntry = event.target instanceof HTMLElement && Boolean(event.target.closest('input, textarea, [contenteditable="true"]'));
+      if (isTextEntry) return;
       const isInteractive = event.target instanceof HTMLElement && Boolean(event.target.closest('button, input, a'));
       if (isInteractive && (event.key === ' ' || event.key === 'Enter')) return;
       if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
@@ -2484,6 +3314,7 @@ const output = `<!doctype html>
         customBooks = rememberedVocabulary.customBooks;
         deletedProjectPersonalBookIds = rememberedVocabulary.deletedProjectPersonalBookIds;
       }
+      studySize = studySizePreferenceForBook(activeStudyBookKey());
       renderWordbookLists();
       isReady = true;
       shuffle();
@@ -2495,6 +3326,7 @@ const output = `<!doctype html>
       activeCustomBookId = null;
       customBooks = PROJECT_PERSONAL_BOOKS.slice();
       deletedProjectPersonalBookIds = [];
+      studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
       renderWordbookLists();
       isReady = true;
       shuffle();
