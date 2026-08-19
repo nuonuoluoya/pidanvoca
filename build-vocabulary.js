@@ -3,8 +3,26 @@ const path = require('path');
 
 const wordbooksPath = path.join(__dirname, 'wordbooks');
 const personalWordbooksPath = path.join(wordbooksPath, 'my');
-const defaultBookFileName = '大学英语四级单词本.html';
-const outputPath = path.join(__dirname, '随机单词本.html');
+const defaultBookFileName = 'cet-4-vocabulary.html';
+const outputPath = path.join(__dirname, 'vocabulary-flashcards.html');
+const builtInBookDefinitions = [
+  { fileName: 'cet-6-vocabulary.html', name: '大学英语六级单词本' },
+  { fileName: 'cet-4-vocabulary.html', name: '大学英语四级单词本' },
+  { fileName: 'college-entrance-exam-vocabulary.html', name: '高考英语单词本' },
+  { fileName: 'postgraduate-entrance-exam-vocabulary.html', name: '考研英语单词本' },
+  { fileName: 'primary-school-vocabulary.html', name: '小学英语单词本' },
+  { fileName: 'ielts-vocabulary.html', name: '雅思英语单词本' },
+  { fileName: 'junior-high-school-entrance-exam-vocabulary.html', name: '中考英语单词本' }
+];
+const legacyBuiltInBookIds = {
+  '大学英语六级单词本.html': 'cet-6-vocabulary.html',
+  '大学英语四级单词本.html': 'cet-4-vocabulary.html',
+  '高考英语单词本.html': 'college-entrance-exam-vocabulary.html',
+  '考研英语单词本.html': 'postgraduate-entrance-exam-vocabulary.html',
+  '小学英语单词本.html': 'primary-school-vocabulary.html',
+  '雅思英语单词本.html': 'ielts-vocabulary.html',
+  '中考英语单词本.html': 'junior-high-school-entrance-exam-vocabulary.html'
+};
 
 function decodeEntities(value) {
   const named = {
@@ -105,9 +123,24 @@ if (!wordbookFileNames.length) {
   throw new Error('wordbooks 文件夹中没有 HTML 生词本。');
 }
 
-const builtInBooks = wordbookFileNames.map((fileName) => ({
+const missingBuiltInBooks = builtInBookDefinitions
+  .map((book) => book.fileName)
+  .filter((fileName) => !wordbookFileNames.includes(fileName));
+
+if (missingBuiltInBooks.length) {
+  throw new Error(`缺少内置生词本文件：${missingBuiltInBooks.join(', ')}`);
+}
+
+const definedBookFileNames = new Set(builtInBookDefinitions.map((book) => book.fileName));
+const additionalBookDefinitions = wordbookFileNames
+  .filter((fileName) => !definedBookFileNames.has(fileName))
+  .map((fileName) => ({
+    fileName,
+    name: path.basename(fileName, path.extname(fileName))
+  }));
+const builtInBooks = builtInBookDefinitions.concat(additionalBookDefinitions).map(({ fileName, name }) => ({
   id: fileName,
-  name: path.basename(fileName, path.extname(fileName)),
+  name,
   fileName,
   words: parseWordbook(fs.readFileSync(path.join(wordbooksPath, fileName), 'utf8'), fileName)
 }));
@@ -122,6 +155,7 @@ const defaultBuiltInBook = builtInBooks.find((book) => book.fileName === default
 const embeddedBuiltInBooks = JSON.stringify(builtInBooks).replace(/</g, '\\u003c');
 const embeddedPersonalBooks = JSON.stringify(personalBooks).replace(/</g, '\\u003c');
 const embeddedDefaultBookId = JSON.stringify(defaultBuiltInBook.id);
+const embeddedLegacyBuiltInBookIds = JSON.stringify(legacyBuiltInBookIds);
 
 const output = `<!doctype html>
 <html lang="zh-CN">
@@ -1870,6 +1904,7 @@ const output = `<!doctype html>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
     const PROJECT_PERSONAL_BOOKS = ${embeddedPersonalBooks};
     const DEFAULT_BOOK_ID = ${embeddedDefaultBookId};
+    const LEGACY_BUILT_IN_BOOK_IDS = ${embeddedLegacyBuiltInBookIds};
     const DEFAULT_BOOK = BUILT_IN_BOOKS.find((book) => book.id === DEFAULT_BOOK_ID) || BUILT_IN_BOOKS[0];
     const DEFAULT_WORDS = DEFAULT_BOOK.words;
     const vocabularyStorageKey = 'random-vocabulary:last-import:v1';
@@ -1902,7 +1937,10 @@ const output = `<!doctype html>
       try {
         const saved = JSON.parse(window.localStorage.getItem(studySizePreferencesStorageKey) || '{}');
         if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
-        return Object.fromEntries(Object.entries(saved).map(([bookId, value]) => [bookId, normalizeStudySize(value)]));
+        return Object.fromEntries(Object.entries(saved).map(([bookId, value]) => [
+          LEGACY_BUILT_IN_BOOK_IDS[bookId] || bookId,
+          normalizeStudySize(value)
+        ]));
       } catch {
         return {};
       }
@@ -1968,13 +2006,15 @@ const output = `<!doctype html>
     }
 
     function normalizeRememberedPayload(saved) {
-      if (!saved || saved.version !== 1 || !Array.isArray(saved.words)) return null;
-      const rememberedWords = saved.words.map(normalizeStoredWord).filter(Boolean);
-      if (!rememberedWords.length) return null;
+      if (!saved || saved.version !== 1) return null;
       const fileNames = Array.isArray(saved.fileNames) ? saved.fileNames.filter((name) => typeof name === 'string' && name.trim()) : [];
-      const builtInBook = typeof saved.builtInBookId === 'string'
-        ? BUILT_IN_BOOKS.find((book) => book.id === saved.builtInBookId)
+      const rememberedBuiltInBookId = typeof saved.builtInBookId === 'string'
+        ? (LEGACY_BUILT_IN_BOOK_IDS[saved.builtInBookId] || saved.builtInBookId)
         : null;
+      const builtInBook = rememberedBuiltInBookId
+        ? BUILT_IN_BOOKS.find((book) => book.id === rememberedBuiltInBookId)
+        : null;
+      const rememberedWords = Array.isArray(saved.words) ? saved.words.map(normalizeStoredWord).filter(Boolean) : [];
       const savedCustomBooks = Array.isArray(saved.customBooks)
         ? saved.customBooks.map(normalizeCustomBook).filter(Boolean)
         : [];
@@ -1991,6 +2031,7 @@ const output = `<!doctype html>
       }
 
       if (!builtInBook && !customBook && !savedCustomBooks.length && fileNames.length) {
+        if (!rememberedWords.length) return null;
         const legacyFileName = fileNames.length === 1 ? fileNames[0] : '已导入的 ' + fileNames.length + ' 个单词本.html';
         customBook = {
           id: createCustomBookId(legacyFileName),
@@ -2000,6 +2041,8 @@ const output = `<!doctype html>
         };
         customBooks.push(customBook);
       }
+
+      if (!builtInBook && !customBook && !rememberedWords.length) return null;
 
       return {
         words: builtInBook ? builtInBook.words : (customBook ? customBook.words : rememberedWords),
@@ -2047,6 +2090,19 @@ const output = `<!doctype html>
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error || new Error('IndexedDB write failed'));
         transaction.onabort = () => reject(transaction.error || new Error('IndexedDB write aborted'));
+      });
+    }
+
+    function settleWithin(promise, milliseconds) {
+      return new Promise((resolve, reject) => {
+        const timeout = window.setTimeout(() => reject(new Error('Storage write timed out')), milliseconds);
+        promise.then((value) => {
+          window.clearTimeout(timeout);
+          resolve(value);
+        }, (error) => {
+          window.clearTimeout(timeout);
+          reject(error);
+        });
       });
     }
 
@@ -2320,11 +2376,11 @@ const output = `<!doctype html>
         deletedProjectPersonalBookIds,
         fileNames,
         savedAt: new Date().toISOString(),
-        words: WORDS
+        words: builtInBookId ? [] : WORDS
       };
 
       try {
-        await writeRememberedPayload(payload);
+        await settleWithin(writeRememberedPayload(payload), 1800);
         try { window.localStorage.removeItem(vocabularyStorageKey); } catch { /* IndexedDB already succeeded. */ }
         return true;
       } catch {
@@ -2335,6 +2391,15 @@ const output = `<!doctype html>
           return false;
         }
       }
+    }
+
+    let rememberedSelectionQueue = Promise.resolve(true);
+
+    function queueRememberedSelection(options) {
+      rememberedSelectionQueue = rememberedSelectionQueue
+        .catch(() => false)
+        .then(() => rememberVocabulary(options));
+      return rememberedSelectionQueue;
     }
 
     function showImportStatus(message, isError = false, keepVisible = false) {
@@ -2864,9 +2929,17 @@ const output = `<!doctype html>
       if (!deck.length) {
         previousButton.disabled = true;
         nextButton.disabled = true;
+        nextButton.classList.remove('is-completion');
         return;
       }
       const entry = WORDS[deck[position]];
+      if (!entry) {
+        previousButton.disabled = true;
+        nextButton.disabled = true;
+        nextButton.classList.remove('is-completion');
+        document.title = '随机单词本';
+        return;
+      }
       const group = studyGroupForPosition(position);
       const isLatestGroup = studyGroupIndex === studyGroups.length - 1;
       const isGroupEnd = Boolean(group && position === group.end - 1 && isLatestGroup);
@@ -3116,15 +3189,16 @@ const output = `<!doctype html>
       renderWordbookLists();
       shuffle();
       window.setTimeout(scrollExpandedStudyBook, 80);
+      isImporting = false;
+      syncChrome();
 
-      const remembered = await rememberVocabulary({
+      const remembered = await queueRememberedSelection({
         builtInBookId: book.id,
         customBookId: null,
         fileNames: [book.fileName]
       });
+      if (activeBuiltInBookId !== book.id) return;
       showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条；请选择每组数量' + (remembered ? '' : '；浏览器未能保存本次选择'));
-      isImporting = false;
-      syncChrome();
     }
 
     async function selectCustomBook(bookId) {
@@ -3145,15 +3219,16 @@ const output = `<!doctype html>
       renderWordbookLists();
       shuffle();
       window.setTimeout(scrollExpandedStudyBook, 80);
+      isImporting = false;
+      syncChrome();
 
-      const remembered = await rememberVocabulary({
+      const remembered = await queueRememberedSelection({
         builtInBookId: null,
         customBookId: book.id,
         fileNames: [book.fileName]
       });
+      if (activeCustomBookId !== book.id) return;
       showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条；请选择每组数量' + (remembered ? '' : '；浏览器未能保存本次选择'));
-      isImporting = false;
-      syncChrome();
     }
 
     async function deleteCustomBook(bookId) {
