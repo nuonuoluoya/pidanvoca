@@ -1,0 +1,2058 @@
+const fs = require('fs');
+const path = require('path');
+
+const sourcePath = path.join(__dirname, 'Gone With the Wind.html');
+const outputPath = path.join(__dirname, '随机单词本.html');
+
+function decodeEntities(value) {
+  const named = {
+    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+    hellip: '…', middot: '·', ndash: '–', mdash: '—'
+  };
+
+  return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity) => {
+    if (entity[0] === '#') {
+      const isHex = entity[1].toLowerCase() === 'x';
+      const number = parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+      return Number.isFinite(number) ? String.fromCodePoint(number) : match;
+    }
+    return named[entity.toLowerCase()] ?? match;
+  });
+}
+
+function htmlToText(html) {
+  return decodeEntities(html)
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/li\s*>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '')
+    .replace(/<\/(?:div|p|h[1-6]|ol|ul)\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.replace(/[\t ]+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+function extractNote(explanationHtml) {
+  const match = explanationHtml.match(/<!--meta files\s+({[\s\S]*?})\s*-->/i);
+  if (!match) return '';
+
+  try {
+    const meta = JSON.parse(match[1]);
+    return typeof meta.comment === 'string' ? meta.comment.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+function extractMeaning(explanationHtml, note) {
+  let content = explanationHtml.replace(/<!--meta files[\s\S]*?-->/gi, '').trim();
+
+  if (note) {
+    const split = content.match(/^[\s\S]*?(?:<br\s*\/?>\s*){2}([\s\S]*)$/i);
+    if (split) content = split[1];
+  }
+
+  return htmlToText(content);
+}
+
+const source = fs.readFileSync(sourcePath, 'utf8');
+const bodyMatch = source.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
+
+if (!bodyMatch) {
+  throw new Error('未能在源 HTML 中找到单词表 tbody。');
+}
+
+const rowMatches = bodyMatch[1].match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+const words = rowMatches.map((row) => {
+  const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
+  const explanationHtml = cells[4] || '';
+  const note = extractNote(explanationHtml);
+
+  return {
+    word: htmlToText(cells[1] || ''),
+    phonetic: htmlToText(cells[2] || '').replace(/\s+/g, ' '),
+    meaning: extractMeaning(explanationHtml, note),
+    note
+  };
+}).filter((item) => item.word);
+
+if (!words.length) {
+  throw new Error('未能从源 HTML 中提取到词条。');
+}
+
+const embeddedWords = JSON.stringify(words).replace(/</g, '\\u003c');
+
+const output = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#edf4fc">
+  <title>Gone With the Wind · 随机单词本</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #edf4fc;
+      --surface: rgba(255, 255, 255, 0.93);
+      --text: #171d29;
+      --muted: #7f8793;
+      --faint: #aab1bc;
+      --line: #e2e8f0;
+      --accent: #1878f2;
+      --accent-dark: #0e66da;
+      --shadow: 0 22px 60px rgba(69, 96, 130, 0.12), 0 4px 14px rgba(69, 96, 130, 0.06);
+      --radius: 22px;
+      --settings-panel-width: clamp(270px, 24vw, 320px);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { min-height: 100%; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(255,255,255,0.96) 0, rgba(255,255,255,0.42) 34%, transparent 62%),
+        var(--canvas);
+      -webkit-font-smoothing: antialiased;
+      perspective: 1800px;
+    }
+
+    button { font: inherit; }
+
+    .app {
+      position: relative;
+      width: min(1220px, calc(100% - 32px));
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: clamp(34px, 6vh, 54px) 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      width: min(1040px, calc(100% - 168px));
+      min-height: min(720px, calc(100vh - 84px));
+      max-height: min(720px, calc(100vh - 84px));
+      padding: clamp(30px, 4.4vw, 58px);
+      border: 1px solid rgba(255,255,255,0.9);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: auto;
+      scrollbar-width: none;
+    }
+
+    .card__topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: clamp(52px, 8vh, 82px);
+    }
+
+    @property --progress-ratio {
+      syntax: "<percentage>";
+      inherits: true;
+      initial-value: 0%;
+    }
+
+    .clock-progress {
+      --progress-ratio: 0%;
+      --progress-angle: 0deg;
+      position: absolute;
+      top: 5px;
+      right: 28px;
+      left: auto;
+      z-index: 3;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      min-width: 96px;
+      padding: 9px 9px 8px;
+      border: 1px solid rgba(125, 139, 156, 0.18);
+      border-radius: 22px;
+      background: rgba(240,247,255,0.86);
+      box-shadow: 0 9px 28px rgba(69,96,130,0.1), inset 0 1px 0 rgba(255,255,255,0.88);
+      font-variant-numeric: tabular-nums;
+      backdrop-filter: blur(16px);
+      pointer-events: none;
+      user-select: none;
+      transition: --progress-ratio 620ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .clock-progress__dial {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      flex: 0 0 72px;
+      border: 1px solid rgba(93, 124, 164, 0.18);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 36% 30%, rgba(255,255,255,0.98) 0 14%, transparent 35%),
+        linear-gradient(145deg, #fafdff, #e8f1fc);
+      box-shadow: inset 0 0 0 4px rgba(255,255,255,0.72), 0 4px 12px rgba(69,96,130,0.13);
+    }
+
+    .clock-progress__dial::before {
+      content: "";
+      position: absolute;
+      inset: 2px;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, #5aa8ff 0 var(--progress-ratio), rgba(126, 151, 184, 0.14) var(--progress-ratio) 100%);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
+      mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
+    }
+
+    .clock-progress__twelve {
+      position: absolute;
+      top: 7px;
+      left: 50%;
+      z-index: 3;
+      color: #7f91a9;
+      font-size: 8px;
+      font-weight: 850;
+      line-height: 1;
+      transform: translateX(-50%);
+    }
+
+    .clock-progress__tick {
+      position: absolute;
+      z-index: 3;
+      width: 2px;
+      height: 2px;
+      border-radius: 50%;
+      background: #99a9bd;
+    }
+
+    .clock-progress__tick--three { top: 50%; right: 9px; transform: translateY(-50%); }
+    .clock-progress__tick--six { bottom: 9px; left: 50%; transform: translateX(-50%); }
+    .clock-progress__tick--nine { top: 50%; left: 9px; transform: translateY(-50%); }
+
+    .clock-progress__hand-wrap {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      transform: rotate(var(--progress-angle));
+      transition: transform 620ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .clock-progress__hand {
+      position: absolute;
+      bottom: 50%;
+      left: 50%;
+      width: 3px;
+      height: 21px;
+      border-radius: 3px 3px 1px 1px;
+      background: linear-gradient(#5f63ed, #1878f2);
+      box-shadow: 0 1px 5px rgba(24,120,242,0.35);
+      transform: translateX(-50%);
+    }
+
+    .clock-progress__hand::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -5px;
+      width: 9px;
+      height: 9px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      background: #247ef1;
+      box-shadow: 0 1px 5px rgba(24,120,242,0.32);
+      transform: translateX(-50%);
+    }
+
+    .clock-progress__meta {
+      display: grid;
+      grid-template-columns: auto;
+      align-items: baseline;
+      justify-content: center;
+      column-gap: 5px;
+      row-gap: 2px;
+      text-align: center;
+      line-height: 1;
+    }
+
+    .clock-progress__label {
+      grid-column: 1 / -1;
+      color: #9aa5b3;
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: 0.15em;
+    }
+
+    .clock-progress__percent {
+      color: #243249;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    @property --water-level {
+      syntax: "<percentage>";
+      inherits: true;
+      initial-value: 0%;
+    }
+
+    .card-water-progress {
+      --water-level: 0%;
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: hidden;
+      border-radius: inherit;
+      pointer-events: none;
+      transition: opacity 420ms linear, visibility 420ms linear;
+    }
+
+    .card-water-progress__fill {
+      position: absolute;
+      right: -1px;
+      bottom: 0;
+      left: -1px;
+      height: clamp(0px, var(--water-level), 100%);
+      overflow: hidden;
+      background: transparent;
+      transition: height 720ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .card-water-progress[aria-valuenow="100"] .card-water-progress__fill {
+      background: rgba(126,201,254,0.18);
+    }
+
+    .card-water-progress__fill::after {
+      content: "";
+      position: absolute;
+      inset: 18px 0 0;
+      background:
+        radial-gradient(circle at 8% 84%, rgba(255,255,255,0.2) 0 2px, transparent 3px),
+        radial-gradient(circle at 34% 58%, rgba(255,255,255,0.16) 0 1px, transparent 2px),
+        radial-gradient(circle at 63% 78%, rgba(255,255,255,0.18) 0 1.5px, transparent 2.5px),
+        radial-gradient(circle at 91% 46%, rgba(255,255,255,0.14) 0 2px, transparent 3px);
+      background-size: 230px 180px, 270px 210px, 310px 230px, 250px 190px;
+      animation: water-shimmer 13s linear infinite;
+      animation-delay: var(--wave-phase, 0ms);
+    }
+
+    .card-water-progress__wave {
+      position: absolute;
+      left: 0;
+      width: 200%;
+      overflow: visible;
+      filter: none;
+      animation: water-wave 8s linear infinite;
+      animation-delay: var(--wave-phase, 0ms);
+    }
+
+    .card-water-progress__wave path { fill: currentColor; }
+
+    .card-water-progress__wave--band {
+      top: var(--band-offset);
+      height: 720px;
+    }
+
+    .card-water-progress__wave--band-six {
+      --band-offset: 0px;
+      color: rgba(126,201,254,0.18);
+      animation-duration: 16s;
+    }
+
+    .card-water-progress__wave--band-five {
+      --band-offset: 120px;
+      color: rgba(105,190,251,0.1);
+      animation-duration: 13.5s;
+      animation-direction: reverse;
+    }
+
+    .card-water-progress__wave--band-four {
+      --band-offset: 240px;
+      color: rgba(82,174,247,0.1);
+      animation-duration: 11.5s;
+    }
+
+    .card-water-progress__wave--band-three {
+      --band-offset: 360px;
+      color: rgba(59,155,241,0.1);
+      animation-duration: 14s;
+      animation-direction: reverse;
+    }
+
+    .card-water-progress__wave--band-two {
+      --band-offset: 480px;
+      color: rgba(36,136,232,0.1);
+      animation-duration: 10s;
+    }
+
+    .card-water-progress__wave--band-one {
+      --band-offset: 600px;
+      color: rgba(18,112,214,0.1);
+      animation-duration: 8.5s;
+      animation-direction: reverse;
+    }
+
+    .deck-card:not([data-offset="0"]) .card-water-progress {
+      opacity: 0 !important;
+      visibility: hidden !important;
+    }
+
+    @keyframes water-wave {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(-50%, 0, 0); }
+    }
+
+    @keyframes water-shimmer {
+      from { transform: translate3d(0, 0, 0); }
+      to { transform: translate3d(230px, -36px, 0); }
+    }
+
+    .card-progress-count {
+      position: absolute;
+      top: 36px;
+      left: 48px;
+      z-index: 3;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 5px;
+      color: var(--faint);
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .card-progress-count strong {
+      color: #39465a;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .page-actions {
+      position: fixed;
+      top: 24px;
+      right: 32px;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .quiet-button.page-action-button {
+      width: 44px;
+      height: 44px;
+      justify-content: center;
+      padding: 0;
+      border: 1px solid rgba(102, 161, 202, 0.22);
+      border-radius: 50%;
+      color: #3f8fc5;
+      background: linear-gradient(145deg, rgba(238,248,255,0.96), rgba(201,229,247,0.92));
+      box-shadow: 0 8px 24px rgba(67,125,166,0.12), inset 0 1px 0 rgba(255,255,255,0.82);
+      backdrop-filter: blur(14px);
+    }
+
+    .quiet-button.page-action-button .icon { opacity: 0.8; }
+
+    .quiet-button.page-action-button:hover {
+      color: var(--accent);
+      background: linear-gradient(145deg, #f5fbff, #bfdef3);
+      box-shadow: 0 10px 28px rgba(67,125,166,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
+    }
+
+    .quiet-button,
+    .nav-button,
+    .sound-button,
+    .dictionary-button {
+      border: 0;
+      cursor: pointer;
+      transition: transform 160ms ease, color 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .quiet-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 2px;
+      color: #68717e;
+      background: transparent;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .quiet-button:hover { color: var(--text); }
+    .quiet-button:active { transform: scale(0.97); }
+    .quiet-button:disabled { opacity: 0.46; cursor: wait; }
+
+    .import-input {
+      position: fixed;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      z-index: 10;
+      max-width: min(520px, calc(100% - 32px));
+      padding: 11px 16px;
+      border: 1px solid rgba(125, 139, 156, 0.2);
+      border-radius: 12px;
+      color: #344052;
+      background: rgba(255,255,255,0.94);
+      box-shadow: 0 12px 34px rgba(69,96,130,0.16);
+      font-size: 14px;
+      line-height: 1.45;
+      text-align: center;
+      opacity: 0;
+      transform: translate(-50%, 12px);
+      pointer-events: none;
+      transition: opacity 180ms ease, transform 180ms ease;
+      backdrop-filter: blur(14px);
+    }
+
+    .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+    .toast.is-error { color: #a83a3a; border-color: rgba(190,72,72,0.22); }
+
+    .word-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    h1 {
+      min-width: 0;
+      margin: 0;
+      overflow-wrap: anywhere;
+      font-size: clamp(42px, 5.2vw, 66px);
+      line-height: 0.98;
+      letter-spacing: -0.045em;
+      font-weight: 750;
+    }
+
+    .sound-button,
+    .dictionary-button {
+      flex: 0 0 auto;
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #8b929d;
+      background: #f2f5f8;
+      text-decoration: none;
+    }
+
+    .sound-button:hover,
+    .dictionary-button:hover {
+      color: var(--accent);
+      background: #e8f2ff;
+    }
+
+    .phonetic {
+      min-height: 25px;
+      margin: 26px 0 0;
+      color: #858d98;
+      font-size: clamp(15px, 1.7vw, 18px);
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .meaning {
+      margin: 24px 0 0;
+      font-size: clamp(17px, 1.8vw, 20px);
+      line-height: 1.65;
+      font-weight: 650;
+      white-space: pre-line;
+    }
+
+    .notes {
+      margin-top: clamp(34px, 5vh, 50px);
+      padding-top: clamp(30px, 4vh, 42px);
+      border-top: 1px dashed var(--line);
+    }
+
+    .notes[hidden] { display: none; }
+
+    .notes h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      line-height: 1.3;
+      font-weight: 750;
+    }
+
+    .notes p {
+      max-width: 820px;
+      margin: 0;
+      color: #293241;
+      font-family: Georgia, "Times New Roman", "Noto Serif", serif;
+      font-size: clamp(17px, 1.8vw, 20px);
+      line-height: 1.62;
+      white-space: pre-line;
+    }
+
+    .controls {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .nav-button {
+      position: relative;
+      width: 124px;
+      min-width: 124px;
+      height: 148px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 0;
+      color: #8fc8ee;
+      background: transparent;
+      box-shadow: none;
+      opacity: 0.2;
+      pointer-events: auto;
+      overflow: visible;
+      isolation: isolate;
+    }
+
+    .app::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 80;
+      width: 34px;
+      background: linear-gradient(90deg, transparent, rgba(66, 91, 120, 0.14));
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 480ms ease;
+    }
+
+    body.settings-open .app {
+      border-radius: 0 26px 26px 0;
+      box-shadow: 24px 0 52px rgba(42, 66, 94, 0.2);
+      transform: translate3d(calc(-1 * var(--settings-panel-width)), 0, 0) rotateY(-2.2deg) scale(0.992);
+      pointer-events: none;
+    }
+
+    body.settings-open .app::after { opacity: 1; }
+
+    .settings-toggle {
+      position: fixed;
+      top: 24px;
+      right: 32px;
+      z-index: 70;
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid rgba(102, 161, 202, 0.22);
+      border-radius: 50%;
+      color: #3f8fc5;
+      background: linear-gradient(145deg, rgba(238,248,255,0.98), rgba(201,229,247,0.94));
+      box-shadow: 0 8px 24px rgba(67,125,166,0.12), inset 0 1px 0 rgba(255,255,255,0.86);
+      cursor: pointer;
+      transition: transform 220ms ease, color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+      backdrop-filter: blur(14px);
+    }
+
+    .settings-toggle:hover {
+      color: var(--accent);
+      background: linear-gradient(145deg, #f5fbff, #bfdef3);
+      box-shadow: 0 10px 28px rgba(67,125,166,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
+    }
+
+    .settings-toggle:active { transform: scale(0.94); }
+    .settings-toggle .icon { transition: transform 640ms cubic-bezier(0.4, 0, 0.2, 1); }
+    body.settings-open .settings-toggle .icon { transform: rotate(52deg); }
+
+    .settings-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1;
+      width: var(--settings-panel-width);
+      padding: 96px 24px 28px;
+      color: var(--text);
+      background: #fff;
+      border-left: 1px solid rgba(112, 132, 154, 0.12);
+      box-shadow: inset 18px 0 36px rgba(87, 110, 136, 0.04);
+      opacity: 0;
+      transform: translateX(24px);
+      pointer-events: none;
+      transition: opacity 360ms ease 90ms, transform 760ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    body.settings-open .settings-drawer {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+
+    .settings-drawer__eyebrow {
+      margin: 0 0 22px;
+      color: #9aa5b2;
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .settings-actions {
+      display: grid;
+      gap: 10px;
+    }
+
+    .settings-action {
+      width: 100%;
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      padding: 0 16px;
+      border: 1px solid rgba(105, 142, 174, 0.14);
+      border-radius: 15px;
+      color: #3f5268;
+      background: #f6f9fc;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+      font-size: 15px;
+      font-weight: 680;
+      text-align: left;
+      cursor: pointer;
+      transition: transform 160ms ease, color 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+
+    .settings-action:hover {
+      color: var(--accent-dark);
+      border-color: rgba(24,120,242,0.18);
+      background: #edf6ff;
+    }
+
+    .settings-action:active { transform: scale(0.98); }
+    .settings-action:disabled { opacity: 0.46; cursor: wait; }
+    .settings-action .icon { width: 21px; height: 21px; }
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity 180ms ease, transform 160ms ease;
+    }
+
+    .nav-button::before,
+    .nav-button::after {
+      display: none;
+    }
+
+    .nav-button__icon {
+      position: relative;
+      z-index: 2;
+      width: 104px;
+      height: 128px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 0;
+      color: inherit;
+      background: transparent;
+      box-shadow: none;
+      transform: none;
+      transition: none;
+    }
+
+    .nav-button__icon::after {
+      display: none;
+    }
+
+    .nav-button--next .nav-button__icon {
+      color: inherit;
+      background: transparent;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .nav-button__icon .icon {
+      width: 84px;
+      height: 112px;
+      stroke-width: 4.6;
+      stroke-linecap: butt;
+      stroke-linejoin: miter;
+      transition: none;
+    }
+
+    .nav-button__arrow-base,
+    .nav-button__arrow-flow {
+      fill: none;
+      stroke-linejoin: miter;
+    }
+
+    .nav-button__arrow-base {
+      stroke: currentColor;
+      stroke-width: inherit;
+      stroke-linecap: butt;
+    }
+
+    .nav-button__arrow-flow {
+      pointer-events: none;
+      stroke-linecap: round;
+      animation: nav-button-path-flow 2.05s linear infinite;
+    }
+
+    .nav-button__arrow-flow--sheen {
+      stroke: #f2fbff;
+      stroke-width: 2.25;
+      stroke-dasharray: 18 82;
+      opacity: 0.95;
+    }
+
+    .nav-button__arrow-flow--ripple {
+      stroke: #4ba7df;
+      stroke-width: 0.95;
+      stroke-dasharray: 3 7;
+      opacity: 0.92;
+      animation-duration: 1.25s;
+      animation-direction: reverse;
+    }
+
+    .nav-button--next .nav-button__arrow-flow--sheen { animation-delay: -1.025s; }
+    .nav-button--next .nav-button__arrow-flow--ripple { animation-delay: -0.625s; }
+
+    @keyframes nav-button-path-flow {
+      from { stroke-dashoffset: 0; }
+      to { stroke-dashoffset: -100; }
+    }
+
+    .nav-button:hover:not(:disabled) { opacity: 0.7; }
+    .nav-button:active:not(:disabled) { opacity: 0.82; }
+    .nav-button:disabled { opacity: 0.1; cursor: not-allowed; }
+
+    .icon {
+      width: 22px;
+      height: 22px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .card.is-changing .card__content { animation: card-in 260ms ease both; }
+
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    :focus-visible {
+      outline: 3px solid rgba(24,120,242,0.3);
+      outline-offset: 3px;
+    }
+
+    @media (max-width: 700px) {
+      :root { --settings-panel-width: min(78vw, 300px); }
+
+      .settings-toggle { top: 10px; right: 14px; width: 42px; height: 42px; }
+      .settings-drawer { padding: 78px 18px 22px; }
+      .settings-action { min-height: 52px; padding: 0 14px; }
+
+      .app {
+        width: min(100% - 24px, 560px);
+        padding: 18px 0;
+      }
+
+      .card {
+        width: 100%;
+        min-height: calc(100vh - 36px);
+        max-height: calc(100vh - 36px);
+        padding: 24px 28px 34px;
+        border-radius: 18px;
+      }
+
+      .card__topline { margin-bottom: 48px; }
+      .top-actions { gap: 14px; }
+      h1 { font-size: clamp(38px, 11vw, 52px); }
+      .sound-button,
+      .dictionary-button { width: 38px; height: 38px; }
+      .phonetic { margin-top: 22px; }
+      .meaning { margin-top: 20px; }
+      .nav-button {
+        min-width: 48px;
+        width: 48px;
+        height: 48px;
+        padding: 6px;
+      }
+      .nav-button::before, .nav-button::after { width: 34px; height: 34px; border-radius: 12px; }
+      .nav-button__icon { width: 36px; height: 36px; border-radius: 13px; }
+      .nav-button__icon::after { width: 10px; height: 10px; border-radius: 0 12px 0 7px; }
+      .nav-button__icon .icon { width: 19px; height: 19px; }
+      .nav-button--previous { margin-left: -6px; }
+      .nav-button--next { margin-right: -6px; }
+    }
+
+    /* 3D circular vocabulary deck */
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      background:
+        radial-gradient(circle at 50% 34%, rgba(255,255,255,0.98) 0, rgba(255,255,255,0.62) 25%, rgba(237,244,252,0.2) 58%, transparent 76%),
+        var(--canvas);
+    }
+
+    .app {
+      position: relative;
+      width: 100vw;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+      display: block;
+      overflow: hidden;
+      isolation: isolate;
+      z-index: 2;
+      background:
+        radial-gradient(circle at 50% 34%, rgba(255,255,255,0.98) 0, rgba(255,255,255,0.62) 25%, rgba(237,244,252,0.2) 58%, transparent 76%),
+        var(--canvas);
+      transform: translate3d(0, 0, 0) rotateY(0deg) scale(1);
+      transform-origin: left center;
+      backface-visibility: hidden;
+      will-change: transform;
+      transition:
+        transform 760ms cubic-bezier(0.4, 0, 0.2, 1),
+        border-radius 620ms cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 620ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .scene {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      perspective: 1600px;
+      perspective-origin: 50% 46%;
+    }
+
+    .scene::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 48%;
+      width: min(1040px, 78vw);
+      height: min(560px, 66vh);
+      border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(255,255,255,0.86) 0, rgba(255,255,255,0.18) 58%, transparent 74%);
+      filter: blur(22px);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .orbit {
+      position: absolute;
+      left: 50%;
+      bottom: clamp(38px, 8vh, 82px);
+      width: min(1380px, 96vw);
+      height: 310px;
+      border-bottom: 2px solid rgba(127,148,174,0.18);
+      border-radius: 0 0 50% 50%;
+      box-shadow: 0 26px 52px rgba(86,112,145,0.06);
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    .deck-stage {
+      position: relative;
+      z-index: 2;
+      width: min(760px, calc(100vw - 280px));
+      height: min(620px, calc(100vh - 150px));
+      min-height: 500px;
+      transform-style: preserve-3d;
+    }
+
+    .card-layer {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+    }
+
+    .deck-card {
+      position: absolute;
+      inset: 0;
+      padding: 0;
+      border: 1px solid rgba(255,255,255,0.94);
+      border-radius: 20px;
+      color: var(--text);
+      background: #ffffff;
+      box-shadow: 0 22px 56px rgba(69,96,130,0.13), 0 4px 14px rgba(69,96,130,0.06);
+      overflow: hidden;
+      backface-visibility: hidden;
+      transform-origin: 50% 50% -1120px;
+      transform-style: preserve-3d;
+      will-change: transform, opacity, filter;
+      transition:
+        transform 640ms cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 500ms ease,
+        filter 500ms ease,
+        box-shadow 500ms ease;
+    }
+
+    .card-scroll {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      padding: 132px 48px 44px;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 transparent;
+    }
+
+    .card-scroll::-webkit-scrollbar { width: 0; height: 0; }
+
+    .deck-card[data-offset="0"] {
+      z-index: 10;
+      opacity: 1;
+      filter: none;
+      transform: rotateY(0deg) scale(1);
+      pointer-events: auto;
+    }
+
+    .deck-card[data-offset="-1"] { z-index: 8; opacity: 0.82; filter: saturate(0.82) brightness(0.99); transform: translateZ(-150px) rotateY(-14deg) scale(0.94); }
+    .deck-card[data-offset="1"]  { z-index: 8; opacity: 0.82; filter: saturate(0.82) brightness(0.99); transform: translateZ(-150px) rotateY(14deg) scale(0.94); }
+    .deck-card[data-offset="-2"] { z-index: 6; opacity: 0.5; filter: saturate(0.7) brightness(1.01); transform: translateZ(-310px) rotateY(-26deg) scale(0.86); }
+    .deck-card[data-offset="2"]  { z-index: 6; opacity: 0.5; filter: saturate(0.7) brightness(1.01); transform: translateZ(-310px) rotateY(26deg) scale(0.86); }
+    .deck-card[data-offset="-3"] { z-index: 4; opacity: 0.24; filter: saturate(0.55) brightness(1.02); transform: translateZ(-470px) rotateY(-36deg) scale(0.78); }
+    .deck-card[data-offset="3"]  { z-index: 4; opacity: 0.24; filter: saturate(0.55) brightness(1.02); transform: translateZ(-470px) rotateY(36deg) scale(0.78); }
+    .deck-card[data-offset="-4"] { z-index: 2; opacity: 0; filter: saturate(0.4); transform: translateZ(-620px) rotateY(-44deg) scale(0.72); }
+    .deck-card[data-offset="4"]  { z-index: 2; opacity: 0; filter: saturate(0.4); transform: translateZ(-620px) rotateY(44deg) scale(0.72); }
+
+    .deck-card.is-incoming { z-index: 11 !important; }
+
+    .deck-card.is-flying-out,
+    .deck-card.is-returning {
+      z-index: 14 !important;
+      filter: none !important;
+      box-shadow: 0 32px 76px rgba(69,96,130,0.22) !important;
+    }
+
+    .deck-card.is-flying-out {
+      transition:
+        transform 430ms cubic-bezier(0.55, 0, 1, 0.45),
+        opacity 360ms ease-in,
+        filter 360ms ease-in,
+        box-shadow 360ms ease;
+    }
+
+    .deck-card.is-returning {
+      opacity: 0;
+      transform: translate3d(var(--fly-x), var(--fly-y), 160px) rotateZ(var(--fly-rotate)) rotateY(-18deg) scale(0.72);
+      transition:
+        transform 620ms cubic-bezier(0.16, 1, 0.3, 1),
+        opacity 460ms ease-out,
+        filter 460ms ease-out,
+        box-shadow 460ms ease;
+    }
+
+    .deck-card.is-yielding { z-index: 10 !important; }
+
+    .card-layer.is-transitioning .deck-card.is-flying-out {
+      opacity: 0;
+      filter: blur(1px) saturate(0.8);
+      transform: translate3d(var(--fly-x), var(--fly-y), 160px) rotateZ(var(--fly-rotate)) rotateY(-18deg) scale(0.72);
+    }
+
+    .card-layer.is-transitioning .deck-card.is-returning {
+      opacity: 1;
+      filter: none;
+      transform: translateZ(0) rotateY(0deg) rotateZ(0deg) scale(1);
+    }
+
+    .deck-card:not([data-offset="0"]) {
+      pointer-events: none;
+      overflow: hidden;
+      box-shadow: 0 14px 36px rgba(69,96,130,0.09);
+    }
+
+    .deck-card > * { transition: opacity 420ms linear; }
+    .deck-card:not([data-offset="0"]) > * { opacity: 0; visibility: hidden; }
+    .deck-card:not([data-offset="0"]) .sound-button,
+    .deck-card:not([data-offset="0"]) .dictionary-button { display: none; }
+    .deck-card.is-flying-out > *,
+    .deck-card.is-yielding > * { opacity: 1 !important; visibility: visible !important; }
+    .deck-card.is-incoming > * { opacity: 0 !important; visibility: visible !important; }
+    .card-layer.is-transitioning .deck-card.is-flying-out > *,
+    .card-layer.is-transitioning .deck-card.is-yielding > * {
+      opacity: 0 !important;
+      transition-duration: 360ms;
+    }
+    .card-layer.is-transitioning .deck-card.is-incoming > * {
+      opacity: 1 !important;
+      transition-duration: 520ms;
+      transition-delay: 60ms;
+    }
+
+    .card-word-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .card-word {
+      min-width: 0;
+      margin: 0;
+      overflow-wrap: anywhere;
+      color: var(--text);
+      font-size: clamp(46px, 4.7vw, 62px);
+      line-height: 1;
+      letter-spacing: -0.045em;
+      font-weight: 760;
+    }
+
+    .deck-card .sound-button,
+    .deck-card .dictionary-button {
+      width: 40px;
+      height: 40px;
+    }
+
+    .card-phonetic {
+      margin: 25px 0 0;
+      color: #858d98;
+      font-size: 17px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .card-meaning {
+      margin: 24px 0 0;
+      color: var(--text);
+      font-size: 19px;
+      line-height: 1.62;
+      font-weight: 650;
+      white-space: pre-line;
+    }
+
+    .card-notes {
+      margin-top: 34px;
+      padding-top: 30px;
+      border-top: 1px dashed var(--line);
+      transition: opacity 400ms ease;
+    }
+
+    .card-notes h3 {
+      margin: 0 0 13px;
+      font-size: 18px;
+      line-height: 1.3;
+      font-weight: 750;
+    }
+
+    .card-notes p {
+      max-width: 670px;
+      margin: 0;
+      color: #293241;
+      font-family: Georgia, "Times New Roman", "Noto Serif", serif;
+      font-size: 19px;
+      line-height: 1.62;
+      white-space: pre-line;
+    }
+
+    .controls {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      display: block;
+      pointer-events: none;
+    }
+
+    .nav-button {
+      position: absolute;
+      top: 50%;
+      min-height: 0;
+      pointer-events: auto;
+      transform: translateY(-50%);
+    }
+
+    .nav-button--previous { left: clamp(26px, 3.2vw, 56px); margin: 0; color: #8fc8ee; }
+    .nav-button--next { right: clamp(26px, 3.2vw, 56px); margin: 0; }
+    .nav-button:hover:not(:disabled) { opacity: 0.7; transform: translateY(-50%); }
+    .nav-button:active:not(:disabled) { opacity: 0.82; transform: translateY(-50%) scale(0.96); }
+    .nav-button:disabled { opacity: 0.1; }
+
+    @media (max-width: 700px) {
+      .page-actions { top: 8px; right: 14px; gap: 7px; }
+      .quiet-button.page-action-button {
+        width: 42px;
+        height: 42px;
+        justify-content: center;
+        padding: 0;
+        border-radius: 50%;
+      }
+      .clock-progress {
+        top: 3px;
+        right: 16px;
+        left: auto;
+        min-width: 84px;
+        gap: 4px;
+        padding: 6px;
+        border-radius: 19px;
+      }
+      .clock-progress__dial { width: 63px; height: 63px; flex-basis: 63px; }
+      .clock-progress__twelve { top: 6px; font-size: 7px; }
+      .clock-progress__tick--three { right: 8px; }
+      .clock-progress__tick--six { bottom: 8px; }
+      .clock-progress__tick--nine { left: 8px; }
+      .clock-progress__hand { width: 2px; height: 18px; }
+      .clock-progress__label { font-size: 8px; }
+      .clock-progress__percent { font-size: 14px; }
+      .card-progress-count { top: 28px; left: 28px; font-size: 12px; }
+      .card-progress-count strong { font-size: 14px; }
+
+      .scene { perspective: 980px; perspective-origin: 50% 48%; }
+
+      .orbit {
+        bottom: 34px;
+        width: 138vw;
+        height: 190px;
+      }
+
+      .deck-stage {
+        width: calc(100vw - 44px);
+        height: calc(100vh - 108px);
+        min-height: 0;
+        max-height: 720px;
+      }
+
+      .deck-card {
+        border-radius: 18px;
+        transform-origin: 50% 50% -520px;
+      }
+
+      .card-scroll { padding: 112px 28px 34px; }
+
+      .deck-card[data-offset="-1"] { transform: translateZ(-80px) rotateY(-12deg) scale(0.95); }
+      .deck-card[data-offset="1"]  { transform: translateZ(-80px) rotateY(12deg) scale(0.95); }
+      .deck-card[data-offset="-2"] { transform: translateZ(-175px) rotateY(-22deg) scale(0.87); }
+      .deck-card[data-offset="2"]  { transform: translateZ(-175px) rotateY(22deg) scale(0.87); }
+      .deck-card[data-offset="-3"] { transform: translateZ(-270px) rotateY(-30deg) scale(0.79); }
+      .deck-card[data-offset="3"]  { transform: translateZ(-270px) rotateY(30deg) scale(0.79); }
+      .deck-card[data-offset="-4"] { transform: translateZ(-360px) rotateY(-37deg) scale(0.72); }
+      .deck-card[data-offset="4"]  { transform: translateZ(-360px) rotateY(37deg) scale(0.72); }
+      .deck-card.is-returning {
+        transform: translate3d(var(--fly-x), var(--fly-y), 90px) rotateZ(var(--fly-rotate)) rotateY(-14deg) scale(0.76);
+      }
+      .card-layer.is-transitioning .deck-card.is-flying-out {
+        transform: translate3d(var(--fly-x), var(--fly-y), 90px) rotateZ(var(--fly-rotate)) rotateY(-14deg) scale(0.76);
+      }
+
+      .card-word { font-size: clamp(38px, 11vw, 50px); }
+      .card-phonetic { margin-top: 22px; font-size: 15px; }
+      .card-meaning { margin-top: 20px; font-size: 17px; }
+      .card-notes { margin-top: 28px; padding-top: 25px; }
+      .card-notes h3 { font-size: 17px; }
+      .card-notes p { font-size: 17px; }
+
+      .nav-button {
+        min-width: 96px;
+        width: 96px;
+        height: 116px;
+        padding: 0;
+      }
+
+      .nav-button__icon { width: 80px; height: 104px; }
+      .nav-button__icon .icon { width: 64px; height: 88px; stroke-width: 4.4; }
+      .nav-button--previous { left: 2px; }
+      .nav-button--next { right: 2px; }
+      .toast { bottom: 14px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+      .app { transition-duration: 280ms !important; }
+      .app::after,
+      .settings-drawer,
+      .settings-toggle .icon { transition-duration: 220ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <button class="settings-toggle" id="settingsButton" type="button" aria-label="打开设置" aria-controls="settingsDrawer" aria-expanded="false" title="打开设置">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15.03 1.7 1.7 0 0 0 3.08 14H3v-4h.08A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.06-.06L7.03 4.2l.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.08V3h4v.08a1.7 1.7 0 0 0 1.03 1.52 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"></path></svg>
+  </button>
+
+  <aside class="settings-drawer" id="settingsDrawer" aria-label="页面设置" aria-hidden="true" inert>
+    <p class="settings-drawer__eyebrow">页面设置</p>
+    <div class="settings-actions">
+      <button class="settings-action" id="shuffleButton" type="button" aria-label="随机重排" title="重新随机排序（R）">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5"></path><path d="M4 20 21 3"></path><path d="M21 16v5h-5"></path><path d="m15 15 6 6"></path><path d="M4 4l5 5"></path></svg>
+        <span>随机重排</span>
+      </button>
+      <button class="settings-action" id="importButton" type="button" aria-label="导入生词本" title="导入一个或多个 HTML 生词本">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+        <span>导入生词本</span>
+      </button>
+      <input class="import-input" id="importInput" type="file" accept=".html,.htm,text/html" multiple aria-label="选择一个或多个 HTML 生词本">
+    </div>
+  </aside>
+
+  <main class="app" aria-label="随机单词本">
+    <section class="scene" aria-label="3D 单词卡片组">
+      <div class="orbit" aria-hidden="true"></div>
+      <div class="deck-stage">
+        <div class="card-layer" id="cardLayer" aria-live="polite"></div>
+      </div>
+
+      <nav class="controls" aria-label="单词切换">
+        <button class="nav-button nav-button--previous" id="previousButton" type="button" aria-label="上一个单词" title="上一个单词（←）">
+          <span class="nav-button__icon" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path class="nav-button__arrow-base" d="M11.196 3 6 12l5.196 9"></path>
+              <path class="nav-button__arrow-flow nav-button__arrow-flow--sheen" pathLength="100" d="M11.196 3 6 12l5.196 9"></path>
+              <path class="nav-button__arrow-flow nav-button__arrow-flow--ripple" pathLength="100" d="M11.196 3 6 12l5.196 9"></path>
+            </svg>
+          </span>
+        </button>
+        <button class="nav-button nav-button--next" id="nextButton" type="button" aria-label="下一个单词" title="下一个单词（→）">
+          <span class="nav-button__icon" aria-hidden="true">
+            <svg class="icon" viewBox="0 0 24 24">
+              <path class="nav-button__arrow-base" d="M12.804 3 18 12l-5.196 9"></path>
+              <path class="nav-button__arrow-flow nav-button__arrow-flow--sheen" pathLength="100" d="M12.804 3 18 12l-5.196 9"></path>
+              <path class="nav-button__arrow-flow nav-button__arrow-flow--ripple" pathLength="100" d="M12.804 3 18 12l-5.196 9"></path>
+            </svg>
+          </span>
+        </button>
+      </nav>
+
+      <div class="toast" id="importStatus" role="status" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script>
+    const DEFAULT_WORDS = ${embeddedWords};
+    const vocabularyStorageKey = 'random-vocabulary:last-import:v1';
+    const vocabularyDatabaseName = 'random-vocabulary';
+    const vocabularyDatabaseStore = 'state';
+    const vocabularyDatabaseRecord = 'last-import';
+    let vocabularyDatabasePromise = null;
+
+    function normalizeStoredWord(entry) {
+      if (!entry || typeof entry !== 'object' || typeof entry.word !== 'string' || !entry.word.trim()) return null;
+      return {
+        word: entry.word.trim(),
+        phonetic: typeof entry.phonetic === 'string' ? entry.phonetic : '',
+        meaning: typeof entry.meaning === 'string' ? entry.meaning : '',
+        note: typeof entry.note === 'string' ? entry.note : ''
+      };
+    }
+
+    function normalizeRememberedPayload(saved) {
+      if (!saved || saved.version !== 1 || !Array.isArray(saved.words)) return null;
+      const rememberedWords = saved.words.map(normalizeStoredWord).filter(Boolean);
+      return rememberedWords.length ? rememberedWords : null;
+    }
+
+    function openVocabularyDatabase() {
+      if (!('indexedDB' in window)) return Promise.reject(new Error('IndexedDB unavailable'));
+      if (vocabularyDatabasePromise) return vocabularyDatabasePromise;
+
+      vocabularyDatabasePromise = new Promise((resolve, reject) => {
+        const request = window.indexedDB.open(vocabularyDatabaseName, 1);
+        request.onupgradeneeded = () => {
+          const database = request.result;
+          if (!database.objectStoreNames.contains(vocabularyDatabaseStore)) {
+            database.createObjectStore(vocabularyDatabaseStore);
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
+      });
+      return vocabularyDatabasePromise;
+    }
+
+    async function readRememberedPayload() {
+      const database = await openVocabularyDatabase();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(vocabularyDatabaseStore, 'readonly');
+        const request = transaction.objectStore(vocabularyDatabaseStore).get(vocabularyDatabaseRecord);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error || new Error('IndexedDB read failed'));
+      });
+    }
+
+    async function writeRememberedPayload(payload) {
+      const database = await openVocabularyDatabase();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(vocabularyDatabaseStore, 'readwrite');
+        transaction.objectStore(vocabularyDatabaseStore).put(payload, vocabularyDatabaseRecord);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('IndexedDB write failed'));
+        transaction.onabort = () => reject(transaction.error || new Error('IndexedDB write aborted'));
+      });
+    }
+
+    function loadRememberedWordsFromLocalStorage() {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(vocabularyStorageKey) || 'null');
+        return normalizeRememberedPayload(saved);
+      } catch {
+        return null;
+      }
+    }
+
+    async function loadRememberedWords() {
+      try {
+        const rememberedWords = normalizeRememberedPayload(await readRememberedPayload());
+        if (rememberedWords) return rememberedWords;
+      } catch {
+        // File URLs and privacy modes may not expose IndexedDB; use the compatible fallback.
+      }
+      const localWords = loadRememberedWordsFromLocalStorage();
+      if (localWords) {
+        writeRememberedPayload({
+          version: 1,
+          fileNames: [],
+          savedAt: new Date().toISOString(),
+          words: localWords
+        }).then(() => {
+          try { window.localStorage.removeItem(vocabularyStorageKey); } catch { /* Keep the compatible copy. */ }
+        }).catch(() => {});
+      }
+      return localWords;
+    }
+
+    let WORDS = DEFAULT_WORDS;
+    const cardLayer = document.getElementById('cardLayer');
+    const previousButton = document.getElementById('previousButton');
+    const nextButton = document.getElementById('nextButton');
+    const settingsButton = document.getElementById('settingsButton');
+    const settingsDrawer = document.getElementById('settingsDrawer');
+    const importButton = document.getElementById('importButton');
+    const importInput = document.getElementById('importInput');
+    const importStatus = document.getElementById('importStatus');
+    const shuffleButton = document.getElementById('shuffleButton');
+
+    previousButton.disabled = true;
+    nextButton.disabled = true;
+    importButton.disabled = true;
+    shuffleButton.disabled = true;
+
+    let deck = [];
+    let position = 0;
+    let statusTimer = 0;
+    let isTransitioning = false;
+    let isReady = false;
+    let isImporting = false;
+    let transitionTimer = 0;
+    const visibleRadius = 3;
+    const exitPoints = new Map();
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    function createExitPoint() {
+      const angle = Math.PI * (0.58 + Math.random() * 0.84);
+      const distance = Math.hypot(window.innerWidth, window.innerHeight) * 1.16;
+      return {
+        x: Math.round(Math.cos(angle) * distance),
+        y: Math.round(Math.sin(angle) * distance),
+        rotate: Math.round(-28 + Math.random() * 56)
+      };
+    }
+
+    function exitPointFor(deckPosition) {
+      if (!exitPoints.has(deckPosition)) exitPoints.set(deckPosition, createExitPoint());
+      return exitPoints.get(deckPosition);
+    }
+
+    function applyExitPoint(card, point) {
+      card.style.setProperty('--fly-x', point.x + 'px');
+      card.style.setProperty('--fly-y', point.y + 'px');
+      card.style.setProperty('--fly-rotate', point.rotate + 'deg');
+      card.dataset.flyX = String(point.x);
+      card.dataset.flyY = String(point.y);
+      card.dataset.flyRotate = String(point.rotate);
+    }
+
+    const importedEntityDecoder = document.createElement('textarea');
+    const importBatchSize = 100;
+
+    function decodeImportedEntities(value) {
+      importedEntityDecoder.innerHTML = value;
+      return importedEntityDecoder.value;
+    }
+
+    function yieldToMainThread() {
+      return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+    }
+
+    function importedHtmlToText(html) {
+      return decodeImportedEntities(String(html))
+        .replace(/<script[\\s\\S]*?<\\/script>/gi, '')
+        .replace(/<style[\\s\\S]*?<\\/style>/gi, '')
+        .replace(/<br\\s*\\/?>/gi, '\\n')
+        .replace(/<\\/li\\s*>/gi, '\\n')
+        .replace(/<li[^>]*>/gi, '')
+        .replace(/<\\/(?:div|p|h[1-6]|ol|ul)\\s*>/gi, '\\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\\r/g, '')
+        .split('\\n')
+        .map((line) => line.replace(/[\\t ]+/g, ' ').trim())
+        .filter(Boolean)
+        .join('\\n')
+        .trim();
+    }
+
+    function extractImportedNote(explanationHtml) {
+      const match = explanationHtml.match(/<!--meta files\\s+({[\\s\\S]*?})\\s*-->/i);
+      if (!match) return '';
+      try {
+        const meta = JSON.parse(match[1]);
+        return typeof meta.comment === 'string' ? meta.comment.trim() : '';
+      } catch {
+        return '';
+      }
+    }
+
+    function extractImportedMeaning(explanationHtml, note) {
+      let content = explanationHtml.replace(/<!--meta files[\\s\\S]*?-->/gi, '').trim();
+      if (note) {
+        const split = content.match(/^[\\s\\S]*?(?:<br\\s*\\/?>\\s*){2}([\\s\\S]*)$/i);
+        if (split) content = split[1];
+      }
+      return importedHtmlToText(content);
+    }
+
+    function collectImportedRows(root, entries) {
+      root.querySelectorAll('tbody tr').forEach((row) => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length < 5) return;
+        const explanationRoot = cells[4].querySelector('.expDiv') || cells[4];
+        const explanationHtml = explanationRoot.innerHTML;
+        const note = extractImportedNote(explanationHtml);
+        const entry = {
+          word: (cells[1].textContent || '').trim(),
+          phonetic: (cells[2].textContent || '').replace(/\\s+/g, ' ').trim(),
+          meaning: extractImportedMeaning(explanationHtml, note),
+          note
+        };
+        if (entry.word) entries.push(entry);
+      });
+    }
+
+    async function parseImportedBook(html, onProgress) {
+      const sourceHtml = String(html);
+      const entries = [];
+      const parser = new DOMParser();
+      const rowPattern = /<tr[^>]*>[\\s\\S]*?<\\/tr>/gi;
+      const batch = [];
+      let match;
+      let discoveredRows = 0;
+      const bodyOpen = /<tbody[^>]*>/i.exec(sourceHtml);
+      const scanStart = bodyOpen ? bodyOpen.index + bodyOpen[0].length : 0;
+      rowPattern.lastIndex = scanStart;
+
+      while ((match = rowPattern.exec(sourceHtml))) {
+        batch.push(match[0]);
+        discoveredRows += 1;
+        if (batch.length < importBatchSize) continue;
+        const batchDocument = parser.parseFromString('<table><tbody>' + batch.join('') + '</tbody></table>', 'text/html');
+        collectImportedRows(batchDocument, entries);
+        batch.length = 0;
+        if (onProgress) onProgress(discoveredRows);
+        await yieldToMainThread();
+      }
+
+      if (batch.length) {
+        const batchDocument = parser.parseFromString('<table><tbody>' + batch.join('') + '</tbody></table>', 'text/html');
+        collectImportedRows(batchDocument, entries);
+        if (onProgress) onProgress(discoveredRows);
+      }
+      if (!discoveredRows) {
+        collectImportedRows(parser.parseFromString(sourceHtml, 'text/html'), entries);
+      }
+      return entries;
+    }
+
+    function mergeDistinctText(currentValue, incomingValue) {
+      if (!incomingValue) return currentValue;
+      if (!currentValue) return incomingValue;
+      if (currentValue === incomingValue || currentValue.includes(incomingValue)) return currentValue;
+      if (incomingValue.includes(currentValue)) return incomingValue;
+      return currentValue + '\\n\\n' + incomingValue;
+    }
+
+    function replaceWithImportedWords(importedWords) {
+      const wordMap = new Map();
+
+      importedWords.forEach((entry) => {
+        const key = entry.word.toLocaleLowerCase();
+        const existing = wordMap.get(key);
+        if (!existing) {
+          wordMap.set(key, { ...entry });
+          return;
+        }
+        existing.phonetic = existing.phonetic || entry.phonetic;
+        existing.meaning = mergeDistinctText(existing.meaning, entry.meaning);
+        existing.note = mergeDistinctText(existing.note, entry.note);
+      });
+
+      WORDS = Array.from(wordMap.values());
+      return WORDS.length;
+    }
+
+    async function rememberImportedWords(fileNames) {
+      const payload = {
+        version: 1,
+        fileNames,
+        savedAt: new Date().toISOString(),
+        words: WORDS
+      };
+
+      try {
+        await writeRememberedPayload(payload);
+        try { window.localStorage.removeItem(vocabularyStorageKey); } catch { /* IndexedDB already succeeded. */ }
+        return true;
+      } catch {
+        try {
+          window.localStorage.setItem(vocabularyStorageKey, JSON.stringify(payload));
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    }
+
+    function showImportStatus(message, isError = false, keepVisible = false) {
+      window.clearTimeout(statusTimer);
+      importStatus.textContent = message;
+      importStatus.classList.toggle('is-error', isError);
+      importStatus.classList.add('is-visible');
+      if (!keepVisible) {
+        statusTimer = window.setTimeout(() => importStatus.classList.remove('is-visible'), 4200);
+      }
+    }
+
+    async function importBooks(files) {
+      if (!files.length) return;
+      isImporting = true;
+      importButton.disabled = true;
+      showImportStatus('正在读取 ' + files.length + ' 个生词本…', false, true);
+
+      try {
+        const books = [];
+        for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+          const file = files[fileIndex];
+          showImportStatus('正在读取第 ' + (fileIndex + 1) + ' / ' + files.length + ' 个生词本…', false, true);
+          const html = await file.text();
+          const entries = await parseImportedBook(html, (parsedRows) => {
+            showImportStatus('正在解析第 ' + (fileIndex + 1) + ' / ' + files.length + ' 个生词本，已处理 ' + parsedRows + ' 行…', false, true);
+          });
+          books.push({ fileName: file.name, entries });
+          await yieldToMainThread();
+        }
+        const validBooks = books.filter((book) => book.entries.length > 0);
+        if (!validBooks.length) throw new Error('未在所选文件中识别到生词表，请选择 HTML 格式的导出生词本。');
+
+        const total = replaceWithImportedWords(validBooks.flatMap((book) => book.entries));
+        const remembered = await rememberImportedWords(validBooks.map((book) => book.fileName));
+        const skipped = files.length - validBooks.length;
+        shuffle();
+        let message = '已载入 ' + validBooks.length + ' 个生词本，共 ' + total + ' 个词条';
+        if (skipped) message += '；忽略 ' + skipped + ' 个无法识别的文件';
+        message += remembered ? '；下次打开将自动恢复' : '；浏览器未能保存，下次打开会恢复默认词库';
+        showImportStatus(message);
+      } catch (error) {
+        showImportStatus(error instanceof Error ? error.message : '导入失败，请检查文件格式。', true);
+      } finally {
+        isImporting = false;
+        importInput.value = '';
+        syncChrome();
+      }
+    }
+
+    const randomValueBuffer = new Uint32Array(1);
+
+    function randomIndex(max) {
+      if (window.crypto?.getRandomValues) {
+        const limit = Math.floor(0x100000000 / max) * max;
+        do window.crypto.getRandomValues(randomValueBuffer); while (randomValueBuffer[0] >= limit);
+        return randomValueBuffer[0] % max;
+      }
+      return Math.floor(Math.random() * max);
+    }
+
+    function createDeck() {
+      const nextDeck = Array.from({ length: WORDS.length }, (_, index) => index);
+      for (let index = nextDeck.length - 1; index > 0; index -= 1) {
+        const swapIndex = randomIndex(index + 1);
+        [nextDeck[index], nextDeck[swapIndex]] = [nextDeck[swapIndex], nextDeck[index]];
+      }
+      return nextDeck;
+    }
+
+    function setCardOffset(card, offset) {
+      const isCurrent = offset === 0;
+      card.dataset.offset = String(offset);
+      card.setAttribute('aria-hidden', String(!isCurrent));
+      const heading = card.querySelector('.card-word');
+      const sound = card.querySelector('.sound-button');
+      if (heading) heading.setAttribute('aria-level', isCurrent ? '1' : '2');
+      if (sound) sound.tabIndex = isCurrent ? 0 : -1;
+    }
+
+    function progressLabelFor(progressValue) {
+      if (progressValue >= 100) return '100%';
+      if (progressValue >= 10) return Math.round(progressValue) + '%';
+      return progressValue.toFixed(1) + '%';
+    }
+
+    function createCardProgressCount(deckPosition) {
+      const progress = document.createElement('div');
+      progress.className = 'card-progress-count';
+      progress.setAttribute('aria-hidden', 'true');
+      const current = document.createElement('strong');
+      current.textContent = deckPosition + 1;
+      const separator = document.createElement('span');
+      separator.textContent = '/';
+      const total = document.createElement('span');
+      total.textContent = deck.length;
+      progress.append(current, separator, total);
+      return progress;
+    }
+
+    function createWaterProgress(deckPosition) {
+      const progressValue = deck.length <= 1 ? 100 : deckPosition / (deck.length - 1) * 100;
+      const progressLabel = progressLabelFor(progressValue);
+      const water = document.createElement('div');
+      water.className = 'card-water-progress';
+      water.setAttribute('role', 'progressbar');
+      water.setAttribute('aria-label', '学习进度');
+      water.setAttribute('aria-valuemin', '0');
+      water.setAttribute('aria-valuemax', '100');
+      water.setAttribute('aria-valuenow', String(Math.round(progressValue * 10) / 10));
+      water.setAttribute('aria-valuetext', '第 ' + (deckPosition + 1) + ' 个，共 ' + deck.length + ' 个，完成 ' + progressLabel);
+      water.style.setProperty('--water-level', progressValue + '%');
+      water.style.setProperty('--wave-phase', -performance.now() + 'ms');
+      water.innerHTML = '<div class="card-water-progress__fill" aria-hidden="true">'
+        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-six" viewBox="0 0 1200 720" preserveAspectRatio="none">'
+        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
+        + '</svg>'
+        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-five" viewBox="0 0 1200 720" preserveAspectRatio="none">'
+        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
+        + '</svg>'
+        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-four" viewBox="0 0 1200 720" preserveAspectRatio="none">'
+        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
+        + '</svg>'
+        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-three" viewBox="0 0 1200 720" preserveAspectRatio="none">'
+        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
+        + '</svg>'
+        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-two" viewBox="0 0 1200 720" preserveAspectRatio="none">'
+        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
+        + '</svg>'
+        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-one" viewBox="0 0 1200 720" preserveAspectRatio="none">'
+        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
+        + '</svg>'
+        + '</div>';
+      return water;
+    }
+
+    function mountCardContent(card, deckPosition) {
+      if (card.dataset.contentPosition === String(deckPosition) && card.querySelector('.card-scroll')) return;
+      const entry = WORDS[deck[deckPosition]];
+      card.replaceChildren();
+      card.dataset.contentPosition = String(deckPosition);
+      const content = document.createElement('div');
+      content.className = 'card-scroll';
+      content.append(createCardProgressCount(deckPosition));
+      card.append(createWaterProgress(deckPosition), content);
+
+      const wordRow = document.createElement('div');
+      wordRow.className = 'card-word-row';
+
+      const heading = document.createElement('h2');
+      heading.className = 'card-word';
+      heading.setAttribute('role', 'heading');
+      heading.textContent = entry.word;
+
+      const sound = document.createElement('button');
+      sound.className = 'sound-button';
+      sound.type = 'button';
+      sound.title = '朗读单词';
+      sound.setAttribute('aria-label', '朗读 ' + entry.word);
+      sound.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5Z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M18 6a8.5 8.5 0 0 1 0 12"></path></svg>';
+
+      const dictionary = document.createElement('a');
+      dictionary.className = 'dictionary-button';
+      dictionary.href = 'https://dictionary.cambridge.org/dictionary/english/' + encodeURIComponent(entry.word.trim().toLowerCase().replace(/\\s+/g, '-'));
+      dictionary.title = '在 Cambridge Dictionary 中查询';
+      dictionary.setAttribute('aria-label', '在 Cambridge Dictionary 中查询 ' + entry.word);
+      dictionary.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3H6.5A2.5 2.5 0 0 0 4 19.5v-14Z"></path><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H14v17a3 3 0 0 1 3-3h.5a2.5 2.5 0 0 1 2.5 2.5v-14Z"></path></svg>';
+
+      wordRow.append(heading, sound, dictionary);
+      content.append(wordRow);
+
+      if (entry.phonetic) {
+        const phonetic = document.createElement('p');
+        phonetic.className = 'card-phonetic';
+        phonetic.textContent = entry.phonetic;
+        content.append(phonetic);
+      }
+
+      if (entry.meaning) {
+        const meaning = document.createElement('p');
+        meaning.className = 'card-meaning';
+        meaning.textContent = entry.meaning;
+        content.append(meaning);
+      }
+
+      if (entry.note) {
+        const notes = document.createElement('section');
+        notes.className = 'card-notes';
+        const notesTitle = document.createElement('h3');
+        notesTitle.textContent = '我的笔记';
+        const note = document.createElement('p');
+        note.textContent = entry.note;
+        notes.append(notesTitle, note);
+        content.append(notes);
+      }
+    }
+
+    function stripCardContent(card) {
+      if (!card.childElementCount) return;
+      card.replaceChildren();
+      delete card.dataset.contentPosition;
+    }
+
+    function resetCardFlightState(card) {
+      card.className = 'deck-card';
+      card.style.removeProperty('--fly-x');
+      card.style.removeProperty('--fly-y');
+      card.style.removeProperty('--fly-rotate');
+      delete card.dataset.flyX;
+      delete card.dataset.flyY;
+      delete card.dataset.flyRotate;
+    }
+
+    function createCard(deckPosition, offset, includeContent = false) {
+      const card = document.createElement('article');
+      card.className = 'deck-card';
+      card.dataset.deckPosition = String(deckPosition);
+      if (includeContent) mountCardContent(card, deckPosition);
+      setCardOffset(card, offset);
+      return card;
+    }
+
+    function synchronizeCards(center, direction = 0, contentPositions = new Set([center])) {
+      const existingCards = new Map(
+        Array.from(cardLayer.querySelectorAll('.deck-card')).map((card) => [Number(card.dataset.deckPosition), card])
+      );
+
+      return cardPositions(center, direction).map((deckPosition) => {
+        const offset = deckPosition - center;
+        const card = existingCards.get(deckPosition) || createCard(deckPosition, offset);
+        resetCardFlightState(card);
+        card.dataset.deckPosition = String(deckPosition);
+        if (contentPositions.has(deckPosition)) mountCardContent(card, deckPosition);
+        else stripCardContent(card);
+        setCardOffset(card, offset);
+        return card;
+      });
+    }
+
+    function cardPositions(center, direction = 0) {
+      const first = direction < 0 ? Math.max(0, center - 1) : center;
+      const last = Math.min(deck.length - 1, center + visibleRadius + (direction > 0 ? 1 : 0));
+      const positions = [];
+      for (let deckPosition = first; deckPosition <= last; deckPosition += 1) positions.push(deckPosition);
+      return positions;
+    }
+
+    function syncChrome() {
+      shuffleButton.disabled = !isReady || isTransitioning || isImporting;
+      importButton.disabled = !isReady || isTransitioning || isImporting;
+      if (!deck.length) {
+        previousButton.disabled = true;
+        nextButton.disabled = true;
+        return;
+      }
+      const entry = WORDS[deck[position]];
+      previousButton.disabled = isTransitioning || position === 0;
+      const isLast = position === deck.length - 1;
+      nextButton.disabled = isTransitioning;
+      nextButton.setAttribute('aria-label', isLast ? '重新随机一轮' : '下一个单词');
+      nextButton.title = isLast ? '重新随机一轮（→）' : '下一个单词（→）';
+      document.title = entry.word + ' · 随机单词本';
+    }
+
+    function bringCurrentCardForward(cards) {
+      const currentCard = cards.find((card) => card.dataset.offset === '0');
+      if (currentCard) cardLayer.append(currentCard);
+    }
+
+    function renderStable() {
+      window.clearTimeout(transitionTimer);
+      isTransitioning = false;
+      cardLayer.classList.remove('is-transitioning');
+      const cards = synchronizeCards(position);
+      cardLayer.replaceChildren(...cards);
+      bringCurrentCardForward(cards);
+      cardLayer.setAttribute('aria-busy', 'false');
+      syncChrome();
+    }
+
+    function moveDeck(direction) {
+      if (isTransitioning) return;
+      const target = position + direction;
+      if (target < 0) return;
+      if (target >= deck.length) {
+        shuffle();
+        return;
+      }
+
+      if (reducedMotion.matches) {
+        if (direction > 0) exitPointFor(position);
+        position = target;
+        renderStable();
+        return;
+      }
+
+      isTransitioning = true;
+      cardLayer.setAttribute('aria-busy', 'true');
+      const cards = synchronizeCards(position, direction, new Set([position, target]));
+      const currentCard = cards.find((card) => Number(card.dataset.deckPosition) === position);
+      const incomingCard = cards.find((card) => Number(card.dataset.deckPosition) === target);
+      const incomingWater = incomingCard && incomingCard.querySelector('.card-water-progress');
+      const targetWaterLevel = incomingWater && incomingWater.style.getPropertyValue('--water-level');
+      const currentWaterLevel = deck.length <= 1 ? 100 : position / (deck.length - 1) * 100;
+      if (incomingWater) incomingWater.style.setProperty('--water-level', currentWaterLevel + '%');
+
+      if (direction > 0) {
+        applyExitPoint(currentCard, exitPointFor(position));
+        currentCard.classList.add('is-flying-out');
+        incomingCard.classList.add('is-incoming');
+      } else {
+        applyExitPoint(incomingCard, exitPointFor(target));
+        currentCard.classList.add('is-yielding');
+        incomingCard.classList.add('is-incoming', 'is-returning');
+      }
+
+      cardLayer.replaceChildren(...cards);
+      bringCurrentCardForward(cards);
+      syncChrome();
+      void cardLayer.offsetWidth;
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          cards.forEach((card) => setCardOffset(card, Number(card.dataset.deckPosition) - target));
+          cardLayer.classList.add('is-transitioning');
+          window.requestAnimationFrame(() => {
+            if (incomingWater && targetWaterLevel) incomingWater.style.setProperty('--water-level', targetWaterLevel);
+          });
+          syncChrome();
+          transitionTimer = window.setTimeout(() => {
+            position = target;
+            renderStable();
+          }, 680);
+        });
+      });
+    }
+
+    function shuffle() {
+      window.clearTimeout(transitionTimer);
+      isTransitioning = false;
+      exitPoints.clear();
+      cardLayer.replaceChildren();
+      deck = createDeck();
+      position = 0;
+      renderStable();
+    }
+
+    function next() { moveDeck(1); }
+    function previous() { moveDeck(-1); }
+
+    function setSettingsOpen(isOpen) {
+      document.body.classList.toggle('settings-open', isOpen);
+      settingsButton.setAttribute('aria-expanded', String(isOpen));
+      settingsButton.setAttribute('aria-label', isOpen ? '关闭设置' : '打开设置');
+      settingsButton.title = isOpen ? '关闭设置' : '打开设置';
+      settingsDrawer.setAttribute('aria-hidden', String(!isOpen));
+      settingsDrawer.inert = !isOpen;
+    }
+
+    function speak() {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(WORDS[deck[position]].word);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.88;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    previousButton.addEventListener('click', previous);
+    nextButton.addEventListener('click', next);
+    settingsButton.addEventListener('click', () => {
+      setSettingsOpen(!document.body.classList.contains('settings-open'));
+    });
+    cardLayer.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('.sound-button')) speak();
+    });
+    importButton.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', () => importBooks(Array.from(importInput.files || [])));
+    shuffleButton.addEventListener('click', shuffle);
+
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && document.body.classList.contains('settings-open')) {
+        event.preventDefault();
+        setSettingsOpen(false);
+        settingsButton.focus();
+        return;
+      }
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const isInteractive = event.target instanceof HTMLElement && Boolean(event.target.closest('button, input, a'));
+      if (isInteractive && (event.key === ' ' || event.key === 'Enter')) return;
+      if (event.key === 'ArrowRight' || event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        next();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        previous();
+      } else if (event.key.toLowerCase() === 'r') {
+        if (shuffleButton.disabled) return;
+        event.preventDefault();
+        shuffle();
+      }
+    });
+
+    async function initializeVocabulary() {
+      const rememberedWords = await loadRememberedWords();
+      if (rememberedWords) WORDS = rememberedWords;
+      isReady = true;
+      shuffle();
+    }
+
+    initializeVocabulary().catch(() => {
+      WORDS = DEFAULT_WORDS;
+      isReady = true;
+      shuffle();
+    });
+  </script>
+</body>
+</html>`;
+
+fs.writeFileSync(outputPath, output, 'utf8');
+console.log(`已生成 ${path.basename(outputPath)}，共 ${words.length} 个词条。`);
