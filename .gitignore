@@ -1,0 +1,5 @@
+# Local/private wordbooks. The application can import these in the browser,
+# but their source files must never be committed.
+/wordbooks/my/
+/Gone With the Wind.html
+/Gone With the Wind 2.html

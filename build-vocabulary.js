@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const sourcePath = path.join(__dirname, 'Gone With the Wind.html');
+const wordbooksPath = path.join(__dirname, 'wordbooks');
+const personalWordbooksPath = path.join(wordbooksPath, 'my');
+const defaultBookFileName = '大学英语四级单词本.html';
 const outputPath = path.join(__dirname, '随机单词本.html');
 
 function decodeEntities(value) {
@@ -60,32 +62,66 @@ function extractMeaning(explanationHtml, note) {
   return htmlToText(content);
 }
 
-const source = fs.readFileSync(sourcePath, 'utf8');
-const bodyMatch = source.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
+function parseWordbook(source, fileName) {
+  const bodyMatch = source.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
+  if (!bodyMatch) throw new Error(`未能在 ${fileName} 中找到单词表 tbody。`);
 
-if (!bodyMatch) {
-  throw new Error('未能在源 HTML 中找到单词表 tbody。');
+  const rowMatches = bodyMatch[1].match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+  const words = rowMatches.map((row) => {
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
+    const explanationHtml = cells[4] || '';
+    const note = extractNote(explanationHtml);
+
+    return {
+      word: htmlToText(cells[1] || ''),
+      phonetic: htmlToText(cells[2] || '').replace(/\s+/g, ' '),
+      meaning: extractMeaning(explanationHtml, note),
+      note
+    };
+  }).filter((item) => item.word);
+
+  if (!words.length) throw new Error(`未能从 ${fileName} 中提取到词条。`);
+  return words;
 }
 
-const rowMatches = bodyMatch[1].match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-const words = rowMatches.map((row) => {
-  const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
-  const explanationHtml = cells[4] || '';
-  const note = extractNote(explanationHtml);
-
-  return {
-    word: htmlToText(cells[1] || ''),
-    phonetic: htmlToText(cells[2] || '').replace(/\s+/g, ' '),
-    meaning: extractMeaning(explanationHtml, note),
-    note
-  };
-}).filter((item) => item.word);
-
-if (!words.length) {
-  throw new Error('未能从源 HTML 中提取到词条。');
+if (!fs.existsSync(wordbooksPath)) {
+  throw new Error('未找到 wordbooks 文件夹。');
 }
 
-const embeddedWords = JSON.stringify(words).replace(/</g, '\\u003c');
+function listHtmlFiles(directoryPath) {
+  if (!fs.existsSync(directoryPath)) return [];
+  return fs.readdirSync(directoryPath)
+  .filter((fileName) => /\.html?$/i.test(fileName))
+  .sort((left, right) => left.localeCompare(right, 'zh-CN'));
+}
+
+function createCustomBookId(fileName) {
+  return 'custom:' + encodeURIComponent(String(fileName || '').trim().toLocaleLowerCase());
+}
+
+const wordbookFileNames = listHtmlFiles(wordbooksPath);
+
+if (!wordbookFileNames.length) {
+  throw new Error('wordbooks 文件夹中没有 HTML 生词本。');
+}
+
+const builtInBooks = wordbookFileNames.map((fileName) => ({
+  id: fileName,
+  name: path.basename(fileName, path.extname(fileName)),
+  fileName,
+  words: parseWordbook(fs.readFileSync(path.join(wordbooksPath, fileName), 'utf8'), fileName)
+}));
+const includePersonalWordbooks = process.env.INCLUDE_PERSONAL_WORDBOOKS === '1';
+const personalBooks = (includePersonalWordbooks ? listHtmlFiles(personalWordbooksPath) : []).map((fileName) => ({
+  id: createCustomBookId(fileName),
+  name: path.basename(fileName, path.extname(fileName)),
+  fileName,
+  words: parseWordbook(fs.readFileSync(path.join(personalWordbooksPath, fileName), 'utf8'), fileName)
+}));
+const defaultBuiltInBook = builtInBooks.find((book) => book.fileName === defaultBookFileName) || builtInBooks[0];
+const embeddedBuiltInBooks = JSON.stringify(builtInBooks).replace(/</g, '\\u003c');
+const embeddedPersonalBooks = JSON.stringify(personalBooks).replace(/</g, '\\u003c');
+const embeddedDefaultBookId = JSON.stringify(defaultBuiltInBook.id);
 
 const output = `<!doctype html>
 <html lang="zh-CN">
@@ -93,7 +129,7 @@ const output = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#edf4fc">
-  <title>Gone With the Wind · 随机单词本</title>
+  <title>随机单词本</title>
   <style>
     :root {
       color-scheme: light;
@@ -700,6 +736,7 @@ const output = `<!doctype html>
       border-left: 1px solid rgba(112, 132, 154, 0.12);
       box-shadow: inset 18px 0 36px rgba(87, 110, 136, 0.04);
       opacity: 0;
+      overflow-y: auto;
       transform: translateX(24px);
       pointer-events: none;
       transition: opacity 360ms ease 90ms, transform 760ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -753,6 +790,117 @@ const output = `<!doctype html>
     .settings-action:active { transform: scale(0.98); }
     .settings-action:disabled { opacity: 0.46; cursor: wait; }
     .settings-action .icon { width: 21px; height: 21px; }
+
+    .settings-action__chevron {
+      width: 18px !important;
+      height: 18px !important;
+      margin-left: auto;
+      color: #8ba0b5;
+      transition: transform 180ms ease;
+    }
+
+    .settings-action[aria-expanded="true"] .settings-action__chevron { transform: rotate(180deg); }
+
+    .wordbook-panel {
+      margin: 2px 0 6px;
+      padding: 12px;
+      border: 1px solid rgba(105, 142, 174, 0.12);
+      border-radius: 15px;
+      background: rgba(244, 249, 253, 0.78);
+    }
+
+    .wordbook-panel[hidden] { display: none; }
+
+    .wordbook-section[hidden] { display: none; }
+    .wordbook-section + .wordbook-section { margin-top: 14px; }
+
+    .wordbook-panel__label {
+      margin: 0 0 9px 2px;
+      color: #91a0af;
+      font-size: 11px;
+      font-weight: 760;
+      letter-spacing: 0.12em;
+    }
+
+    .wordbook-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .wordbook-option-row {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 38px;
+      align-items: stretch;
+      gap: 6px;
+    }
+
+    .wordbook-option {
+      width: 100%;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 12px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      color: #41566c;
+      background: rgba(255,255,255,0.84);
+      text-align: left;
+      cursor: pointer;
+      transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    .wordbook-option:hover {
+      color: var(--accent-dark);
+      border-color: rgba(24,120,242,0.16);
+      background: #fff;
+    }
+
+    .wordbook-option:active { transform: scale(0.985); }
+
+    .wordbook-option[aria-pressed="true"] {
+      color: #176fbf;
+      border-color: rgba(24,120,242,0.2);
+      background: #eaf5ff;
+    }
+
+    .wordbook-option__name {
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 680;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .wordbook-option__count {
+      color: #91a0af;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .wordbook-delete {
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(105, 142, 174, 0.12);
+      border-radius: 12px;
+      color: #91a3b5;
+      background: rgba(255,255,255,0.72);
+      cursor: pointer;
+      transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    .wordbook-delete:hover {
+      color: #c45464;
+      border-color: rgba(196,84,100,0.2);
+      background: #fff4f5;
+    }
+
+    .wordbook-delete:active { transform: scale(0.94); }
+    .wordbook-delete .icon { width: 17px; height: 17px; }
       -webkit-tap-highlight-color: transparent;
       transition: opacity 180ms ease, transform 160ms ease;
     }
@@ -1300,6 +1448,21 @@ const output = `<!doctype html>
   <aside class="settings-drawer" id="settingsDrawer" aria-label="页面设置" aria-hidden="true" inert>
     <p class="settings-drawer__eyebrow">页面设置</p>
     <div class="settings-actions">
+      <button class="settings-action" id="wordbookButton" type="button" aria-label="显示单词本列表" aria-controls="wordbookPanel" aria-expanded="false">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5Z"></path><path d="M4 4.5v17"></path><path d="M8 6h8"></path></svg>
+        <span>单词本</span>
+        <svg class="icon settings-action__chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"></path></svg>
+      </button>
+      <div class="wordbook-panel" id="wordbookPanel" hidden>
+        <section class="wordbook-section" aria-labelledby="builtInWordbookLabel">
+          <p class="wordbook-panel__label" id="builtInWordbookLabel">内置</p>
+          <div class="wordbook-list" id="builtInWordbookList"></div>
+        </section>
+        <section class="wordbook-section" id="customWordbookSection" aria-labelledby="customWordbookLabel" hidden>
+          <p class="wordbook-panel__label" id="customWordbookLabel">我的单词本</p>
+          <div class="wordbook-list" id="customWordbookList"></div>
+        </section>
+      </div>
       <button class="settings-action" id="shuffleButton" type="button" aria-label="随机重排" title="重新随机排序（R）">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5"></path><path d="M4 20 21 3"></path><path d="M21 16v5h-5"></path><path d="m15 15 6 6"></path><path d="M4 4l5 5"></path></svg>
         <span>随机重排</span>
@@ -1345,7 +1508,11 @@ const output = `<!doctype html>
   </main>
 
   <script>
-    const DEFAULT_WORDS = ${embeddedWords};
+    const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
+    const PROJECT_PERSONAL_BOOKS = ${embeddedPersonalBooks};
+    const DEFAULT_BOOK_ID = ${embeddedDefaultBookId};
+    const DEFAULT_BOOK = BUILT_IN_BOOKS.find((book) => book.id === DEFAULT_BOOK_ID) || BUILT_IN_BOOKS[0];
+    const DEFAULT_WORDS = DEFAULT_BOOK.words;
     const vocabularyStorageKey = 'random-vocabulary:last-import:v1';
     const vocabularyDatabaseName = 'random-vocabulary';
     const vocabularyDatabaseStore = 'state';
@@ -1362,10 +1529,76 @@ const output = `<!doctype html>
       };
     }
 
+    function createCustomBookId(fileName) {
+      return 'custom:' + encodeURIComponent(String(fileName || '').trim().toLocaleLowerCase());
+    }
+
+    const PROJECT_PERSONAL_BOOK_IDS = new Set(PROJECT_PERSONAL_BOOKS.map((book) => book.id));
+
+    function normalizeCustomBook(book) {
+      if (!book || typeof book !== 'object' || !Array.isArray(book.words)) return null;
+      const words = book.words.map(normalizeStoredWord).filter(Boolean);
+      if (!words.length) return null;
+      const fileName = typeof book.fileName === 'string' && book.fileName.trim() ? book.fileName.trim() : '我的单词本.html';
+      return {
+        id: typeof book.id === 'string' && book.id ? book.id : createCustomBookId(fileName),
+        name: typeof book.name === 'string' && book.name.trim() ? book.name.trim() : fileName.replace(/\.html?$/i, ''),
+        fileName,
+        words
+      };
+    }
+
+    function mergeProjectPersonalBooks(savedBooks = [], deletedProjectBookIds = []) {
+      const deletedIds = new Set(deletedProjectBookIds);
+      const bookMap = new Map(savedBooks.filter((book) => !deletedIds.has(book.id)).map((book) => [book.id, book]));
+      PROJECT_PERSONAL_BOOKS.forEach((book) => {
+        if (!deletedIds.has(book.id)) bookMap.set(book.id, book);
+      });
+      return Array.from(bookMap.values());
+    }
+
     function normalizeRememberedPayload(saved) {
       if (!saved || saved.version !== 1 || !Array.isArray(saved.words)) return null;
       const rememberedWords = saved.words.map(normalizeStoredWord).filter(Boolean);
-      return rememberedWords.length ? rememberedWords : null;
+      if (!rememberedWords.length) return null;
+      const fileNames = Array.isArray(saved.fileNames) ? saved.fileNames.filter((name) => typeof name === 'string' && name.trim()) : [];
+      const builtInBook = typeof saved.builtInBookId === 'string'
+        ? BUILT_IN_BOOKS.find((book) => book.id === saved.builtInBookId)
+        : null;
+      const savedCustomBooks = Array.isArray(saved.customBooks)
+        ? saved.customBooks.map(normalizeCustomBook).filter(Boolean)
+        : [];
+      const deletedProjectPersonalBookIds = Array.isArray(saved.deletedProjectPersonalBookIds)
+        ? saved.deletedProjectPersonalBookIds.filter((id) => typeof id === 'string' && PROJECT_PERSONAL_BOOK_IDS.has(id))
+        : [];
+      const customBooks = mergeProjectPersonalBooks(savedCustomBooks, deletedProjectPersonalBookIds);
+      let customBook = typeof saved.customBookId === 'string'
+        ? customBooks.find((book) => book.id === saved.customBookId)
+        : null;
+
+      if (!builtInBook && !customBook && fileNames.length === 1) {
+        customBook = customBooks.find((book) => book.id === createCustomBookId(fileNames[0])) || null;
+      }
+
+      if (!builtInBook && !customBook && !savedCustomBooks.length && fileNames.length) {
+        const legacyFileName = fileNames.length === 1 ? fileNames[0] : '已导入的 ' + fileNames.length + ' 个单词本.html';
+        customBook = {
+          id: createCustomBookId(legacyFileName),
+          name: legacyFileName.replace(/\.html?$/i, ''),
+          fileName: legacyFileName,
+          words: rememberedWords
+        };
+        customBooks.push(customBook);
+      }
+
+      return {
+        words: builtInBook ? builtInBook.words : (customBook ? customBook.words : rememberedWords),
+        builtInBookId: builtInBook ? builtInBook.id : null,
+        customBookId: customBook ? customBook.id : null,
+        customBooks,
+        deletedProjectPersonalBookIds,
+        fileNames
+      };
     }
 
     function openVocabularyDatabase() {
@@ -1407,7 +1640,7 @@ const output = `<!doctype html>
       });
     }
 
-    function loadRememberedWordsFromLocalStorage() {
+    function loadRememberedVocabularyFromLocalStorage() {
       try {
         const saved = JSON.parse(window.localStorage.getItem(vocabularyStorageKey) || 'null');
         return normalizeRememberedPayload(saved);
@@ -1416,33 +1649,46 @@ const output = `<!doctype html>
       }
     }
 
-    async function loadRememberedWords() {
+    async function loadRememberedVocabulary() {
       try {
-        const rememberedWords = normalizeRememberedPayload(await readRememberedPayload());
-        if (rememberedWords) return rememberedWords;
+        const rememberedVocabulary = normalizeRememberedPayload(await readRememberedPayload());
+        if (rememberedVocabulary) return rememberedVocabulary;
       } catch {
         // File URLs and privacy modes may not expose IndexedDB; use the compatible fallback.
       }
-      const localWords = loadRememberedWordsFromLocalStorage();
-      if (localWords) {
+      const localVocabulary = loadRememberedVocabularyFromLocalStorage();
+      if (localVocabulary) {
         writeRememberedPayload({
           version: 1,
-          fileNames: [],
+          builtInBookId: localVocabulary.builtInBookId,
+          customBookId: localVocabulary.customBookId,
+          customBooks: localVocabulary.customBooks,
+          deletedProjectPersonalBookIds: localVocabulary.deletedProjectPersonalBookIds,
+          fileNames: localVocabulary.fileNames,
           savedAt: new Date().toISOString(),
-          words: localWords
+          words: localVocabulary.words
         }).then(() => {
           try { window.localStorage.removeItem(vocabularyStorageKey); } catch { /* Keep the compatible copy. */ }
         }).catch(() => {});
       }
-      return localWords;
+      return localVocabulary;
     }
 
     let WORDS = DEFAULT_WORDS;
+    let activeBuiltInBookId = DEFAULT_BOOK.id;
+    let activeCustomBookId = null;
+    let customBooks = PROJECT_PERSONAL_BOOKS.slice();
+    let deletedProjectPersonalBookIds = [];
     const cardLayer = document.getElementById('cardLayer');
     const previousButton = document.getElementById('previousButton');
     const nextButton = document.getElementById('nextButton');
     const settingsButton = document.getElementById('settingsButton');
     const settingsDrawer = document.getElementById('settingsDrawer');
+    const wordbookButton = document.getElementById('wordbookButton');
+    const wordbookPanel = document.getElementById('wordbookPanel');
+    const builtInWordbookList = document.getElementById('builtInWordbookList');
+    const customWordbookSection = document.getElementById('customWordbookSection');
+    const customWordbookList = document.getElementById('customWordbookList');
     const importButton = document.getElementById('importButton');
     const importInput = document.getElementById('importInput');
     const importStatus = document.getElementById('importStatus');
@@ -1450,6 +1696,7 @@ const output = `<!doctype html>
 
     previousButton.disabled = true;
     nextButton.disabled = true;
+    wordbookButton.disabled = true;
     importButton.disabled = true;
     shuffleButton.disabled = true;
 
@@ -1615,9 +1862,17 @@ const output = `<!doctype html>
       return WORDS.length;
     }
 
-    async function rememberImportedWords(fileNames) {
+    async function rememberVocabulary({
+      builtInBookId = activeBuiltInBookId,
+      customBookId = activeCustomBookId,
+      fileNames = []
+    } = {}) {
       const payload = {
         version: 1,
+        builtInBookId,
+        customBookId,
+        customBooks,
+        deletedProjectPersonalBookIds,
         fileNames,
         savedAt: new Date().toISOString(),
         words: WORDS
@@ -1647,6 +1902,24 @@ const output = `<!doctype html>
       }
     }
 
+    function storeImportedBooks(importedBooks) {
+      const bookMap = new Map(customBooks.map((book) => [book.id, book]));
+      const storedBooks = importedBooks.map((book) => {
+        const customBook = {
+          id: createCustomBookId(book.fileName),
+          name: book.fileName.replace(/\.html?$/i, ''),
+          fileName: book.fileName,
+          words: book.entries
+        };
+        bookMap.set(customBook.id, customBook);
+        return customBook;
+      });
+      customBooks = Array.from(bookMap.values());
+      const restoredIds = new Set(storedBooks.map((book) => book.id));
+      deletedProjectPersonalBookIds = deletedProjectPersonalBookIds.filter((id) => !restoredIds.has(id));
+      activeCustomBookId = storedBooks.length === 1 ? storedBooks[0].id : null;
+    }
+
     async function importBooks(files) {
       if (!files.length) return;
       isImporting = true;
@@ -1669,7 +1942,10 @@ const output = `<!doctype html>
         if (!validBooks.length) throw new Error('未在所选文件中识别到生词表，请选择 HTML 格式的导出生词本。');
 
         const total = replaceWithImportedWords(validBooks.flatMap((book) => book.entries));
-        const remembered = await rememberImportedWords(validBooks.map((book) => book.fileName));
+        activeBuiltInBookId = null;
+        storeImportedBooks(validBooks);
+        renderWordbookLists();
+        const remembered = await rememberVocabulary({ fileNames: validBooks.map((book) => book.fileName) });
         const skipped = files.length - validBooks.length;
         shuffle();
         let message = '已载入 ' + validBooks.length + ' 个生词本，共 ' + total + ' 个词条';
@@ -1885,6 +2161,7 @@ const output = `<!doctype html>
     function syncChrome() {
       shuffleButton.disabled = !isReady || isTransitioning || isImporting;
       importButton.disabled = !isReady || isTransitioning || isImporting;
+      wordbookButton.disabled = !isReady || isTransitioning || isImporting;
       if (!deck.length) {
         previousButton.disabled = true;
         nextButton.disabled = true;
@@ -1994,6 +2271,147 @@ const output = `<!doctype html>
       settingsDrawer.inert = !isOpen;
     }
 
+    function setWordbookPanelOpen(isOpen) {
+      wordbookButton.setAttribute('aria-expanded', String(isOpen));
+      wordbookButton.setAttribute('aria-label', isOpen ? '隐藏单词本列表' : '显示单词本列表');
+      wordbookPanel.hidden = !isOpen;
+    }
+
+    function createWordbookOption(book, source, isActive) {
+      const button = document.createElement('button');
+      button.className = 'wordbook-option';
+      button.type = 'button';
+      button.dataset.bookId = book.id;
+      button.dataset.bookSource = source;
+      button.setAttribute('aria-pressed', String(isActive));
+      button.setAttribute('aria-label', '使用单词本 ' + book.name + '，共 ' + book.words.length + ' 个词条');
+
+      const name = document.createElement('span');
+      name.className = 'wordbook-option__name';
+      name.textContent = book.name;
+
+      const count = document.createElement('span');
+      count.className = 'wordbook-option__count';
+      count.textContent = book.words.length + ' 词';
+
+      button.append(name, count);
+      return button;
+    }
+
+    function createCustomWordbookRow(book) {
+      const row = document.createElement('div');
+      row.className = 'wordbook-option-row';
+      row.append(createWordbookOption(book, 'custom', book.id === activeCustomBookId));
+
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'wordbook-delete';
+      deleteButton.type = 'button';
+      deleteButton.dataset.deleteBookId = book.id;
+      deleteButton.setAttribute('aria-label', '删除单词本 ' + book.name);
+      deleteButton.title = '删除“' + book.name + '”';
+      deleteButton.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 3h6l1 4H8l1-4Z"></path><path d="M6.5 7l1 14h9l1-14"></path><path d="M10 11v6M14 11v6"></path></svg>';
+      row.append(deleteButton);
+      return row;
+    }
+
+    function renderWordbookLists() {
+      const builtInFragment = document.createDocumentFragment();
+      BUILT_IN_BOOKS.forEach((book) => {
+        builtInFragment.append(createWordbookOption(book, 'built-in', book.id === activeBuiltInBookId));
+      });
+      builtInWordbookList.replaceChildren(builtInFragment);
+
+      const customFragment = document.createDocumentFragment();
+      customBooks.forEach((book) => {
+        customFragment.append(createCustomWordbookRow(book));
+      });
+      customWordbookList.replaceChildren(customFragment);
+      customWordbookSection.hidden = customBooks.length === 0;
+    }
+
+    async function selectBuiltInBook(bookId) {
+      if (!isReady || isTransitioning || isImporting) return;
+      const book = BUILT_IN_BOOKS.find((entry) => entry.id === bookId);
+      if (!book) return;
+
+      isImporting = true;
+      WORDS = book.words;
+      activeBuiltInBookId = book.id;
+      activeCustomBookId = null;
+      renderWordbookLists();
+      shuffle();
+      setSettingsOpen(false);
+
+      const remembered = await rememberVocabulary({
+        builtInBookId: book.id,
+        customBookId: null,
+        fileNames: [book.fileName]
+      });
+      showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条' + (remembered ? '；下次打开将自动恢复' : '；浏览器未能保存本次选择'));
+      isImporting = false;
+      syncChrome();
+    }
+
+    async function selectCustomBook(bookId) {
+      if (!isReady || isTransitioning || isImporting) return;
+      const book = customBooks.find((entry) => entry.id === bookId);
+      if (!book) return;
+
+      isImporting = true;
+      WORDS = book.words;
+      activeBuiltInBookId = null;
+      activeCustomBookId = book.id;
+      renderWordbookLists();
+      shuffle();
+      setSettingsOpen(false);
+
+      const remembered = await rememberVocabulary({
+        builtInBookId: null,
+        customBookId: book.id,
+        fileNames: [book.fileName]
+      });
+      showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条' + (remembered ? '；下次打开将自动恢复' : '；浏览器未能保存本次选择'));
+      isImporting = false;
+      syncChrome();
+    }
+
+    async function deleteCustomBook(bookId) {
+      if (!isReady || isTransitioning || isImporting) return;
+      const book = customBooks.find((entry) => entry.id === bookId);
+      if (!book) return;
+
+      const isProjectBook = PROJECT_PERSONAL_BOOK_IDS.has(book.id);
+      const warning = isProjectBook
+        ? '确定从“我的单词本”中移除“' + book.name + '”吗？项目中的源文件不会被删除。'
+        : '确定删除“' + book.name + '”吗？删除后需要重新导入才能恢复。';
+      if (!window.confirm(warning)) return;
+
+      isImporting = true;
+      const wasActive = activeCustomBookId === book.id;
+      customBooks = customBooks.filter((entry) => entry.id !== book.id);
+      if (isProjectBook && !deletedProjectPersonalBookIds.includes(book.id)) {
+        deletedProjectPersonalBookIds.push(book.id);
+      }
+
+      if (wasActive) {
+        WORDS = DEFAULT_WORDS;
+        activeBuiltInBookId = DEFAULT_BOOK.id;
+        activeCustomBookId = null;
+        shuffle();
+      }
+      renderWordbookLists();
+
+      const activeBook = activeBuiltInBookId
+        ? BUILT_IN_BOOKS.find((entry) => entry.id === activeBuiltInBookId)
+        : customBooks.find((entry) => entry.id === activeCustomBookId);
+      const remembered = await rememberVocabulary({
+        fileNames: activeBook ? [activeBook.fileName] : []
+      });
+      showImportStatus('已删除“' + book.name + '”' + (wasActive ? '，并切换到默认内置词库' : '') + (remembered ? '' : '；浏览器未能保存本次删除'));
+      isImporting = false;
+      syncChrome();
+    }
+
     function speak() {
       if (!('speechSynthesis' in window)) return;
       window.speechSynthesis.cancel();
@@ -2007,6 +2425,25 @@ const output = `<!doctype html>
     nextButton.addEventListener('click', next);
     settingsButton.addEventListener('click', () => {
       setSettingsOpen(!document.body.classList.contains('settings-open'));
+    });
+    wordbookButton.addEventListener('click', () => {
+      setWordbookPanelOpen(wordbookPanel.hidden);
+    });
+    function handleWordbookOptionClick(event) {
+      const option = event.target instanceof Element ? event.target.closest('.wordbook-option') : null;
+      if (option instanceof HTMLButtonElement && option.dataset.bookId) {
+        if (option.dataset.bookSource === 'custom') selectCustomBook(option.dataset.bookId);
+        else selectBuiltInBook(option.dataset.bookId);
+      }
+    }
+    builtInWordbookList.addEventListener('click', handleWordbookOptionClick);
+    customWordbookList.addEventListener('click', (event) => {
+      const deleteButton = event.target instanceof Element ? event.target.closest('.wordbook-delete') : null;
+      if (deleteButton instanceof HTMLButtonElement && deleteButton.dataset.deleteBookId) {
+        deleteCustomBook(deleteButton.dataset.deleteBookId);
+        return;
+      }
+      handleWordbookOptionClick(event);
     });
     cardLayer.addEventListener('click', (event) => {
       if (event.target instanceof Element && event.target.closest('.sound-button')) speak();
@@ -2039,14 +2476,26 @@ const output = `<!doctype html>
     });
 
     async function initializeVocabulary() {
-      const rememberedWords = await loadRememberedWords();
-      if (rememberedWords) WORDS = rememberedWords;
+      const rememberedVocabulary = await loadRememberedVocabulary();
+      if (rememberedVocabulary) {
+        WORDS = rememberedVocabulary.words;
+        activeBuiltInBookId = rememberedVocabulary.builtInBookId;
+        activeCustomBookId = rememberedVocabulary.customBookId;
+        customBooks = rememberedVocabulary.customBooks;
+        deletedProjectPersonalBookIds = rememberedVocabulary.deletedProjectPersonalBookIds;
+      }
+      renderWordbookLists();
       isReady = true;
       shuffle();
     }
 
     initializeVocabulary().catch(() => {
       WORDS = DEFAULT_WORDS;
+      activeBuiltInBookId = DEFAULT_BOOK.id;
+      activeCustomBookId = null;
+      customBooks = PROJECT_PERSONAL_BOOKS.slice();
+      deletedProjectPersonalBookIds = [];
+      renderWordbookLists();
       isReady = true;
       shuffle();
     });
@@ -2055,4 +2504,4 @@ const output = `<!doctype html>
 </html>`;
 
 fs.writeFileSync(outputPath, output, 'utf8');
-console.log(`已生成 ${path.basename(outputPath)}，共 ${words.length} 个词条。`);
+console.log(`已生成 ${path.basename(outputPath)}，内置 ${builtInBooks.length} 个单词本、我的单词本 ${personalBooks.length} 个，共 ${builtInBooks.concat(personalBooks).reduce((total, book) => total + book.words.length, 0)} 个词条。`);
