@@ -2,3 +2,6 @@
 # but their source files must never be committed.
 /wordbooks/my/
 /node_modules/
+playwright-report/
+test-results/
+debug.log
