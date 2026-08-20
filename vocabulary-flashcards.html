@@ -6103,6 +6103,8 @@
       const outgoingFinished = waitForElementTransition(memoryPanel, 'transform', 560);
       const incomingFinished = waitForElementTransition(incomingPanel, 'transform', 760);
       void incomingPanel.offsetWidth;
+      const incomingStartRect = incomingPanel.getBoundingClientRect();
+      incomingPanel.dataset.transitionStartCenter = String(incomingStartRect.left + incomingStartRect.width / 2);
       try {
         await new Promise((resolve) => {
           afterTwoAnimationFrames(() => {

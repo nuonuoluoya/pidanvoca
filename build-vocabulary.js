@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { parseWordbook } = require('./src/features/wordbooks/parser');
 
 const wordbooksPath = path.join(__dirname, 'wordbooks');
 const personalWordbooksPath = path.join(wordbooksPath, 'my');
@@ -30,84 +31,6 @@ const legacyBuiltInBookIds = {
   '雅思英语单词本.html': 'ielts-vocabulary.html',
   '中考英语单词本.html': 'junior-high-school-entrance-exam-vocabulary.html'
 };
-
-function decodeEntities(value) {
-  const named = {
-    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
-    hellip: '…', middot: '·', ndash: '–', mdash: '—'
-  };
-
-  return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, entity) => {
-    if (entity[0] === '#') {
-      const isHex = entity[1].toLowerCase() === 'x';
-      const number = parseInt(entity.slice(isHex ? 2 : 1), isHex ? 16 : 10);
-      return Number.isFinite(number) ? String.fromCodePoint(number) : match;
-    }
-    return named[entity.toLowerCase()] ?? match;
-  });
-}
-
-function htmlToText(html) {
-  return decodeEntities(html)
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/li\s*>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '')
-    .replace(/<\/(?:div|p|h[1-6]|ol|ul)\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\r/g, '')
-    .split('\n')
-    .map((line) => line.replace(/[\t ]+/g, ' ').trim())
-    .filter(Boolean)
-    .join('\n')
-    .trim();
-}
-
-function extractNote(explanationHtml) {
-  const match = explanationHtml.match(/<!--meta files\s+({[\s\S]*?})\s*-->/i);
-  if (!match) return '';
-
-  try {
-    const meta = JSON.parse(match[1]);
-    return typeof meta.comment === 'string' ? meta.comment.trim() : '';
-  } catch {
-    return '';
-  }
-}
-
-function extractMeaning(explanationHtml, note) {
-  let content = explanationHtml.replace(/<!--meta files[\s\S]*?-->/gi, '').trim();
-
-  if (note) {
-    const split = content.match(/^[\s\S]*?(?:<br\s*\/?>\s*){2}([\s\S]*)$/i);
-    if (split) content = split[1];
-  }
-
-  return htmlToText(content);
-}
-
-function parseWordbook(source, fileName) {
-  const bodyMatch = source.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
-  if (!bodyMatch) throw new Error(`未能在 ${fileName} 中找到单词表 tbody。`);
-
-  const rowMatches = bodyMatch[1].match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
-  const words = rowMatches.map((row) => {
-    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
-    const explanationHtml = cells[4] || '';
-    const note = extractNote(explanationHtml);
-
-    return {
-      word: htmlToText(cells[1] || ''),
-      phonetic: htmlToText(cells[2] || '').replace(/\s+/g, ' '),
-      meaning: extractMeaning(explanationHtml, note),
-      note
-    };
-  }).filter((item) => item.word);
-
-  if (!words.length) throw new Error(`未能从 ${fileName} 中提取到词条。`);
-  return words;
-}
 
 if (!fs.existsSync(wordbooksPath)) {
   throw new Error('未找到 wordbooks 文件夹。');
@@ -3791,6 +3714,8 @@ const output = `<!doctype html>
       const outgoingFinished = waitForElementTransition(memoryPanel, 'transform', 560);
       const incomingFinished = waitForElementTransition(incomingPanel, 'transform', 760);
       void incomingPanel.offsetWidth;
+      const incomingStartRect = incomingPanel.getBoundingClientRect();
+      incomingPanel.dataset.transitionStartCenter = String(incomingStartRect.left + incomingStartRect.width / 2);
       try {
         await new Promise((resolve) => {
           afterTwoAnimationFrames(() => {
