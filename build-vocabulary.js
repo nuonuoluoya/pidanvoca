@@ -20,6 +20,8 @@ const databaseModulePath = path.join(__dirname, 'src', 'services', 'storage', 'd
 const reviewRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'review-repository.js');
 const wordbookRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'wordbook-repository.js');
 const settingsRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'settings-repository.js');
+const settingsControllerPath = path.join(__dirname, 'src', 'features', 'settings', 'controller.js');
+const appEventsPath = path.join(__dirname, 'src', 'app', 'events.js');
 const fsrsEntryPath = require.resolve('ts-fsrs');
 const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
 const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
@@ -110,6 +112,8 @@ const embeddedDatabaseModule = fs.readFileSync(databaseModulePath, 'utf8').repla
 const embeddedReviewRepository = fs.readFileSync(reviewRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedWordbookRepository = fs.readFileSync(wordbookRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedSettingsRepository = fs.readFileSync(settingsRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedSettingsController = fs.readFileSync(settingsControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedAppEvents = fs.readFileSync(appEventsPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
@@ -2803,6 +2807,8 @@ const output = `<!doctype html>
   <script>${embeddedReviewRepository}</script>
   <script>${embeddedWordbookRepository}</script>
   <script>${embeddedSettingsRepository}</script>
+  <script>${embeddedSettingsController}</script>
+  <script>${embeddedAppEvents}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
@@ -2856,6 +2862,9 @@ const output = `<!doctype html>
       themeKey: themeStorageKey,
       legacyBookIds: LEGACY_BUILT_IN_BOOK_IDS,
       defaultStudySize
+    });
+    const settingsController = new window.PidanvocaSettings.SettingsController({
+      theme: document.documentElement.dataset.theme
     });
 
     function normalizeStudySize(value) {
@@ -3234,6 +3243,7 @@ const output = `<!doctype html>
     }
 
     function setMemorySettingsOpen(isOpen) {
+      isOpen = settingsController.setMemorySettingsOpen(isOpen);
       memorySettingsButton.setAttribute('aria-expanded', String(isOpen));
       memorySettingsButton.setAttribute('aria-label', isOpen ? '隐藏记忆曲线设置' : '显示记忆曲线设置');
       memorySettingsPanel.hidden = !isOpen;
@@ -4982,6 +4992,7 @@ const output = `<!doctype html>
     }
 
     function setTheme(theme) {
+      theme = settingsController.setTheme(theme);
       if (theme === 'playful') document.documentElement.dataset.theme = 'playful';
       else delete document.documentElement.dataset.theme;
       settingsRepository.writeTheme(theme);
@@ -4989,6 +5000,7 @@ const output = `<!doctype html>
     }
 
     function setSettingsOpen(isOpen) {
+      isOpen = settingsController.setSettingsOpen(isOpen);
       document.body.classList.toggle('settings-open', isOpen);
       settingsButton.setAttribute('aria-expanded', String(isOpen));
       settingsButton.setAttribute('aria-label', isOpen ? '关闭设置' : '打开设置');
@@ -4998,6 +5010,7 @@ const output = `<!doctype html>
     }
 
     function setWordbookPanelOpen(isOpen) {
+      isOpen = settingsController.setWordbookOpen(isOpen);
       wordbookButton.setAttribute('aria-expanded', String(isOpen));
       wordbookButton.setAttribute('aria-label', isOpen ? '隐藏单词本列表' : '显示单词本列表');
       wordbookPanel.hidden = !isOpen;
@@ -5192,25 +5205,38 @@ const output = `<!doctype html>
       window.speechSynthesis.speak(utterance);
     }
 
-    previousButton.addEventListener('click', previous);
-    nextButton.addEventListener('click', next);
-    deckStage.addEventListener('pointerdown', startClassicSwipe);
-    deckStage.addEventListener('pointerup', finishClassicSwipe);
-    deckStage.addEventListener('pointercancel', cancelClassicSwipe);
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) cancelActiveCardTransition('document-hidden');
-    });
-    window.addEventListener('pagehide', () => cancelActiveCardTransition('page-hidden'));
-    themeButton.addEventListener('click', () => {
-      setTheme(document.documentElement.dataset.theme === 'playful' ? 'classic' : 'playful');
-    });
-    settingsButton.addEventListener('click', () => {
-      setSettingsOpen(!document.body.classList.contains('settings-open'));
-    });
-    wordbookButton.addEventListener('click', () => {
-      setWordbookPanelOpen(wordbookPanel.hidden);
-    });
-    memorySettingsButton.addEventListener('click', () => setMemorySettingsOpen(memorySettingsPanel.hidden));
+    const appEventScope = new window.PidanvocaAppEvents.EventScope();
+    appEventScope.bind([
+      { target: previousButton, type: 'click', listener: previous },
+      { target: nextButton, type: 'click', listener: next },
+      { target: deckStage, type: 'pointerdown', listener: startClassicSwipe },
+      { target: deckStage, type: 'pointerup', listener: finishClassicSwipe },
+      { target: deckStage, type: 'pointercancel', listener: cancelClassicSwipe },
+      {
+        target: document,
+        type: 'visibilitychange',
+        listener: () => {
+          if (document.hidden) cancelActiveCardTransition('document-hidden');
+        }
+      },
+      { target: window, type: 'pagehide', listener: () => cancelActiveCardTransition('page-hidden') },
+      { target: themeButton, type: 'click', listener: () => setTheme(settingsController.toggleTheme()) },
+      {
+        target: settingsButton,
+        type: 'click',
+        listener: () => setSettingsOpen(!settingsController.state.settingsOpen)
+      },
+      {
+        target: wordbookButton,
+        type: 'click',
+        listener: () => setWordbookPanelOpen(!settingsController.state.wordbookOpen)
+      },
+      {
+        target: memorySettingsButton,
+        type: 'click',
+        listener: () => setMemorySettingsOpen(!settingsController.state.memorySettingsOpen)
+      }
+    ]);
     memoryDailyNewInput.addEventListener('change', saveMemorySettings);
     memoryDailyPresets.addEventListener('click', (event) => {
       const button = event.target instanceof Element ? event.target.closest('[data-memory-daily]') : null;
@@ -5345,7 +5371,7 @@ const output = `<!doctype html>
         closeStudyComplete(true);
         return;
       }
-      if (event.key === 'Escape' && document.body.classList.contains('settings-open')) {
+      if (event.key === 'Escape' && settingsController.state.settingsOpen) {
         event.preventDefault();
         setSettingsOpen(false);
         settingsButton.focus();

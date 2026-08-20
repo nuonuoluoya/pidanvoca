@@ -135,6 +135,32 @@ test("导入词本复用共享解析规则并生成两张卡", async ({ page }) 
   ).toContainText("/2");
 });
 
+test("设置控制器同步主题、抽屉和内置词本切换", async ({ page }) => {
+  await page.locator("#settingsButton").click();
+  await expect(page.locator("body")).toHaveClass(/settings-open/);
+  await expect(page.locator("#settingsButton")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+
+  await page.locator("#themeButton").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "playful");
+
+  await page.locator("#wordbookButton").click();
+  await expect(page.locator("#wordbookPanel")).toBeVisible();
+  const otherBook = page
+    .locator('#builtInWordbookList .wordbook-option[aria-pressed="false"]')
+    .first();
+  const expectedBookId = await otherBook.getAttribute("data-book-id");
+  await otherBook.click();
+  const selectedBook = page.locator(
+    `#builtInWordbookList .wordbook-option[data-book-id="${expectedBookId}"]`,
+  );
+  await expect(selectedBook).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#importStatus")).toContainText("已切换到");
+  expect(expectedBookId).toBeTruthy();
+});
+
 test("记忆模式 Good 评分推进一次并清理动画状态", async ({ page }) => {
   await page.locator("#memoryButton").click();
   await expect(page.locator("#memoryBackdrop")).toHaveClass(/is-visible/);

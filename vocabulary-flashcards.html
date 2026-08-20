@@ -4535,6 +4535,110 @@ function parseWordbook(source, fileName = "wordbook.html") {
   },
 );
 </script>
+  <script>(function attachSettingsController(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaSettings = Object.assign(
+      {},
+      root.PidanvocaSettings || {},
+      api,
+    );
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createSettingsControllerApi() {
+    "use strict";
+
+    class SettingsController {
+      constructor(options = {}) {
+        this.state = {
+          theme: options.theme === "playful" ? "playful" : "classic",
+          settingsOpen: false,
+          wordbookOpen: false,
+          memorySettingsOpen: false,
+        };
+      }
+
+      setTheme(theme) {
+        this.state.theme = theme === "playful" ? "playful" : "classic";
+        return this.state.theme;
+      }
+
+      toggleTheme() {
+        return this.setTheme(
+          this.state.theme === "playful" ? "classic" : "playful",
+        );
+      }
+
+      setSettingsOpen(isOpen) {
+        this.state.settingsOpen = Boolean(isOpen);
+        return this.state.settingsOpen;
+      }
+
+      setWordbookOpen(isOpen) {
+        this.state.wordbookOpen = Boolean(isOpen);
+        return this.state.wordbookOpen;
+      }
+
+      setMemorySettingsOpen(isOpen) {
+        this.state.memorySettingsOpen = Boolean(isOpen);
+        return this.state.memorySettingsOpen;
+      }
+
+      snapshot() {
+        return Object.freeze({ ...this.state });
+      }
+    }
+
+    return Object.freeze({ SettingsController });
+  },
+);
+</script>
+  <script>(function attachAppEvents(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.PidanvocaAppEvents = api;
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createAppEventsApi() {
+    "use strict";
+
+    class EventScope {
+      constructor() {
+        this.cleanups = [];
+      }
+
+      on(target, type, listener, options) {
+        if (!target || typeof target.addEventListener !== "function") {
+          throw new TypeError(`Cannot bind ${type} without an EventTarget`);
+        }
+        target.addEventListener(type, listener, options);
+        const cleanup = () =>
+          target.removeEventListener(type, listener, options);
+        this.cleanups.push(cleanup);
+        return cleanup;
+      }
+
+      bind(bindings) {
+        bindings.forEach(({ target, type, listener, options }) => {
+          this.on(target, type, listener, options);
+        });
+        return () => this.clear();
+      }
+
+      clear() {
+        this.cleanups
+          .splice(0)
+          .reverse()
+          .forEach((cleanup) => cleanup());
+      }
+    }
+
+    return Object.freeze({ EventScope });
+  },
+);
+</script>
   <script>/* ts-fsrs 5.4.1, MIT License */
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
@@ -6583,6 +6687,9 @@ function parseWordbook(source, fileName = "wordbook.html") {
       legacyBookIds: LEGACY_BUILT_IN_BOOK_IDS,
       defaultStudySize
     });
+    const settingsController = new window.PidanvocaSettings.SettingsController({
+      theme: document.documentElement.dataset.theme
+    });
 
     function normalizeStudySize(value) {
       return window.PidanvocaStorage.normalizeStudySize(value, defaultStudySize);
@@ -6960,6 +7067,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     function setMemorySettingsOpen(isOpen) {
+      isOpen = settingsController.setMemorySettingsOpen(isOpen);
       memorySettingsButton.setAttribute('aria-expanded', String(isOpen));
       memorySettingsButton.setAttribute('aria-label', isOpen ? '隐藏记忆曲线设置' : '显示记忆曲线设置');
       memorySettingsPanel.hidden = !isOpen;
@@ -8708,6 +8816,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     function setTheme(theme) {
+      theme = settingsController.setTheme(theme);
       if (theme === 'playful') document.documentElement.dataset.theme = 'playful';
       else delete document.documentElement.dataset.theme;
       settingsRepository.writeTheme(theme);
@@ -8715,6 +8824,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     function setSettingsOpen(isOpen) {
+      isOpen = settingsController.setSettingsOpen(isOpen);
       document.body.classList.toggle('settings-open', isOpen);
       settingsButton.setAttribute('aria-expanded', String(isOpen));
       settingsButton.setAttribute('aria-label', isOpen ? '关闭设置' : '打开设置');
@@ -8724,6 +8834,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     function setWordbookPanelOpen(isOpen) {
+      isOpen = settingsController.setWordbookOpen(isOpen);
       wordbookButton.setAttribute('aria-expanded', String(isOpen));
       wordbookButton.setAttribute('aria-label', isOpen ? '隐藏单词本列表' : '显示单词本列表');
       wordbookPanel.hidden = !isOpen;
@@ -8918,25 +9029,38 @@ function parseWordbook(source, fileName = "wordbook.html") {
       window.speechSynthesis.speak(utterance);
     }
 
-    previousButton.addEventListener('click', previous);
-    nextButton.addEventListener('click', next);
-    deckStage.addEventListener('pointerdown', startClassicSwipe);
-    deckStage.addEventListener('pointerup', finishClassicSwipe);
-    deckStage.addEventListener('pointercancel', cancelClassicSwipe);
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) cancelActiveCardTransition('document-hidden');
-    });
-    window.addEventListener('pagehide', () => cancelActiveCardTransition('page-hidden'));
-    themeButton.addEventListener('click', () => {
-      setTheme(document.documentElement.dataset.theme === 'playful' ? 'classic' : 'playful');
-    });
-    settingsButton.addEventListener('click', () => {
-      setSettingsOpen(!document.body.classList.contains('settings-open'));
-    });
-    wordbookButton.addEventListener('click', () => {
-      setWordbookPanelOpen(wordbookPanel.hidden);
-    });
-    memorySettingsButton.addEventListener('click', () => setMemorySettingsOpen(memorySettingsPanel.hidden));
+    const appEventScope = new window.PidanvocaAppEvents.EventScope();
+    appEventScope.bind([
+      { target: previousButton, type: 'click', listener: previous },
+      { target: nextButton, type: 'click', listener: next },
+      { target: deckStage, type: 'pointerdown', listener: startClassicSwipe },
+      { target: deckStage, type: 'pointerup', listener: finishClassicSwipe },
+      { target: deckStage, type: 'pointercancel', listener: cancelClassicSwipe },
+      {
+        target: document,
+        type: 'visibilitychange',
+        listener: () => {
+          if (document.hidden) cancelActiveCardTransition('document-hidden');
+        }
+      },
+      { target: window, type: 'pagehide', listener: () => cancelActiveCardTransition('page-hidden') },
+      { target: themeButton, type: 'click', listener: () => setTheme(settingsController.toggleTheme()) },
+      {
+        target: settingsButton,
+        type: 'click',
+        listener: () => setSettingsOpen(!settingsController.state.settingsOpen)
+      },
+      {
+        target: wordbookButton,
+        type: 'click',
+        listener: () => setWordbookPanelOpen(!settingsController.state.wordbookOpen)
+      },
+      {
+        target: memorySettingsButton,
+        type: 'click',
+        listener: () => setMemorySettingsOpen(!settingsController.state.memorySettingsOpen)
+      }
+    ]);
     memoryDailyNewInput.addEventListener('change', saveMemorySettings);
     memoryDailyPresets.addEventListener('click', (event) => {
       const button = event.target instanceof Element ? event.target.closest('[data-memory-daily]') : null;
@@ -9071,7 +9195,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         closeStudyComplete(true);
         return;
       }
-      if (event.key === 'Escape' && document.body.classList.contains('settings-open')) {
+      if (event.key === 'Escape' && settingsController.state.settingsOpen) {
         event.preventDefault();
         setSettingsOpen(false);
         settingsButton.focus();
