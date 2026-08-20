@@ -103,3 +103,81 @@ test("备份格式校验拒绝不兼容版本", () => {
     true,
   );
 });
+
+function validBackup() {
+  const bookId = "book-a";
+  const wordKey = "alpha";
+  const cardId = Core.createCardId(bookId, wordKey);
+  return {
+    format: Core.backupFormat,
+    formatVersion: Core.backupFormatVersion,
+    reviewCards: [
+      {
+        cardId,
+        bookId,
+        wordKey,
+        displayWord: "Alpha",
+        fsrsCard: { due: 1000 },
+        state: 1,
+        due: 1000,
+        stability: 1,
+        difficulty: 5,
+        elapsedDays: 0,
+        scheduledDays: 1,
+        reps: 1,
+        lapses: 0,
+        lastReviewAt: 500,
+        updatedAt: 1000,
+      },
+    ],
+    reviewLogs: [
+      {
+        logId: "log-a",
+        cardId,
+        bookId,
+        wordKey,
+        rating: 3,
+        reviewedAt: 500,
+        dueBefore: 500,
+        dueAfter: 1000,
+      },
+    ],
+    metaEntries: [
+      ["memory-settings", { dailyNew: 10 }],
+      ["daily:book-a:2026-08-20", { wordKeys: ["alpha"] }],
+    ],
+  };
+}
+
+test("备份校验接受一致卡片、日志和白名单元数据", () => {
+  assert.equal(Core.validateBackup(validBackup()).valid, true);
+});
+
+test("备份校验拒绝卡片 ID 不一致、数值越界和未知元数据", () => {
+  const inconsistent = validBackup();
+  inconsistent.reviewCards[0].cardId = "other::alpha";
+  assert.match(Core.validateBackup(inconsistent).reason, /ID/);
+
+  const invalidDifficulty = validBackup();
+  invalidDifficulty.reviewCards[0].difficulty = 11;
+  assert.match(Core.validateBackup(invalidDifficulty).reason, /数值/);
+
+  const unknownMeta = validBackup();
+  unknownMeta.metaEntries.push(["unexpected", {}]);
+  assert.match(Core.validateBackup(unknownMeta).reason, /元数据键/);
+});
+
+test("备份校验拒绝重复 ID 和过深对象", () => {
+  const duplicate = validBackup();
+  duplicate.reviewLogs.push({ ...duplicate.reviewLogs[0] });
+  assert.match(Core.validateBackup(duplicate).reason, /重复的日志 ID/);
+
+  const nested = validBackup();
+  let cursor = {};
+  nested.metaEntries[0][1] = cursor;
+  for (let depth = 0; depth < 14; depth += 1) {
+    cursor.next = {};
+    cursor = cursor.next;
+  }
+  assert.match(Core.validateBackup(nested).reason, /嵌套层级/);
+});

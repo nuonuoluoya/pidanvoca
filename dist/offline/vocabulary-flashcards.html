@@ -2885,6 +2885,137 @@
       ) {
         return { valid: false, reason: "进度文件缺少必要数据。" };
       }
+      const reviewCards = candidate.reviewCards;
+      const reviewLogs = candidate.reviewLogs;
+      const metaEntries = candidate.metaEntries;
+      if (reviewCards.length > 100000)
+        return { valid: false, reason: "进度文件卡片数量超过 100000。" };
+      if (reviewLogs.length > 500000)
+        return { valid: false, reason: "进度文件日志数量超过 500000。" };
+      if (metaEntries.length > 1000)
+        return { valid: false, reason: "进度文件元数据数量超过 1000。" };
+
+      /** @type {(value: unknown, maximum?: number) => boolean} */
+      const validString = (value, maximum = 512) =>
+        typeof value === "string" &&
+        value.length > 0 &&
+        value.length <= maximum;
+      /** @type {(value: unknown, minimum?: number, maximum?: number) => boolean} */
+      const validNumber = (value, minimum = 0, maximum = 8640000000000000) => {
+        const number = Number(value);
+        return (
+          Number.isFinite(number) && number >= minimum && number <= maximum
+        );
+      };
+      const cardIds = new Set();
+      for (const rawCard of reviewCards) {
+        if (!rawCard || typeof rawCard !== "object")
+          return { valid: false, reason: "进度文件包含无效卡片。" };
+        const card = /** @type {Record<string, any>} */ (rawCard);
+        if (
+          !validString(card.cardId) ||
+          !validString(card.bookId) ||
+          !validString(card.wordKey) ||
+          !validString(card.displayWord, 200) ||
+          card.cardId !== createCardId(card.bookId, card.wordKey) ||
+          card.wordKey !== normalizeWordKey(card.wordKey)
+        ) {
+          return { valid: false, reason: "进度文件卡片 ID 或单词键不一致。" };
+        }
+        if (cardIds.has(card.cardId))
+          return { valid: false, reason: "进度文件包含重复的卡片 ID。" };
+        cardIds.add(card.cardId);
+        if (
+          !validNumber(card.due) ||
+          !validNumber(card.updatedAt) ||
+          !validNumber(card.stability, 0, 10000000) ||
+          !validNumber(card.difficulty, 0, 10) ||
+          !Number.isInteger(Number(card.state)) ||
+          Number(card.state) < 0 ||
+          Number(card.state) > 3 ||
+          !validNumber(card.elapsedDays, 0, 10000000) ||
+          !validNumber(card.scheduledDays, 0, 10000000) ||
+          !validNumber(card.reps, 0, 10000000) ||
+          !validNumber(card.lapses, 0, 10000000) ||
+          (card.lastReviewAt != null && !validNumber(card.lastReviewAt)) ||
+          !card.fsrsCard ||
+          typeof card.fsrsCard !== "object" ||
+          !validNumber(card.fsrsCard.due)
+        ) {
+          return { valid: false, reason: "进度文件卡片数值超出允许范围。" };
+        }
+      }
+
+      const logIds = new Set();
+      for (const rawLog of reviewLogs) {
+        if (!rawLog || typeof rawLog !== "object")
+          return { valid: false, reason: "进度文件包含无效复习日志。" };
+        const log = /** @type {Record<string, any>} */ (rawLog);
+        if (
+          !validString(log.logId) ||
+          !validString(log.cardId) ||
+          !validString(log.bookId) ||
+          !validString(log.wordKey) ||
+          log.cardId !== createCardId(log.bookId, log.wordKey)
+        ) {
+          return { valid: false, reason: "进度文件日志 ID 或卡片关联不一致。" };
+        }
+        if (logIds.has(log.logId))
+          return { valid: false, reason: "进度文件包含重复的日志 ID。" };
+        logIds.add(log.logId);
+        if (
+          !Number.isInteger(Number(log.rating)) ||
+          Number(log.rating) < 1 ||
+          Number(log.rating) > 4 ||
+          !validNumber(log.reviewedAt) ||
+          !validNumber(log.dueBefore) ||
+          !validNumber(log.dueAfter)
+        ) {
+          return { valid: false, reason: "进度文件日志数值超出允许范围。" };
+        }
+      }
+
+      const metaKeys = new Set();
+      for (const entry of metaEntries) {
+        if (
+          !Array.isArray(entry) ||
+          entry.length !== 2 ||
+          !validString(entry[0])
+        ) {
+          return { valid: false, reason: "进度文件包含无效元数据。" };
+        }
+        const key = entry[0];
+        if (
+          key !== "memory-settings" &&
+          key !== "memory-system" &&
+          !/^daily:[^:]{1,512}:\d{4}-\d{2}-\d{2}$/.test(key)
+        ) {
+          return { valid: false, reason: "进度文件包含不允许的元数据键。" };
+        }
+        if (metaKeys.has(key))
+          return { valid: false, reason: "进度文件包含重复的元数据键。" };
+        metaKeys.add(key);
+      }
+
+      let inspectedNodes = 0;
+      /** @type {{ value: unknown, depth: number }[]} */
+      const pending = [{ value: payload, depth: 0 }];
+      const seen = new Set();
+      while (pending.length) {
+        const current = pending.pop();
+        if (!current) continue;
+        const { value, depth } = current;
+        if (!value || typeof value !== "object" || seen.has(value)) continue;
+        if (depth > 12)
+          return { valid: false, reason: "进度文件嵌套层级过深。" };
+        seen.add(value);
+        inspectedNodes += 1;
+        if (inspectedNodes > 1000000)
+          return { valid: false, reason: "进度文件对象数量过多。" };
+        Object.values(value).forEach((child) =>
+          pending.push({ value: child, depth: depth + 1 }),
+        );
+      }
       return { valid: true, reason: "" };
     }
 

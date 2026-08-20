@@ -193,6 +193,24 @@ test("导入在读取前拒绝非 HTML 文件", async ({ page }) => {
   await expect(page.locator("#importStatus")).toHaveClass(/is-error/);
 });
 
+test("记忆备份在写入前拒绝未知元数据键", async ({ page }) => {
+  await page.locator("#memoryImportInput").setInputFiles({
+    name: "invalid-progress.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        format: "pidanvoca-memory-progress",
+        formatVersion: 1,
+        reviewCards: [],
+        reviewLogs: [],
+        metaEntries: [["unexpected", {}]],
+      }),
+    ),
+  });
+  await expect(page.locator("#importStatus")).toContainText("不允许的元数据键");
+  await expect(page.locator("#importStatus")).toHaveClass(/is-error/);
+});
+
 test("设置控制器同步主题、抽屉和内置词本切换", async ({ page }) => {
   await page.locator("#settingsButton").click();
   await expect(page.locator("body")).toHaveClass(/settings-open/);
