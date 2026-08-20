@@ -1,4 +1,5 @@
 const { expect, test } = require("@playwright/test");
+const path = require("node:path");
 
 test.beforeEach(async ({ page }) => {
   const runtimeErrors = [];
@@ -115,6 +116,23 @@ test("移动端隐藏经典箭头并保留卡片内容", async ({ page }, testIn
   await expect(
     page.locator('.deck-card[data-offset="0"] .card-word'),
   ).not.toBeEmpty();
+});
+
+test("导入词本复用共享解析规则并生成两张卡", async ({ page }) => {
+  await page
+    .locator("#importInput")
+    .setInputFiles(
+      path.join(__dirname, "..", "fixtures", "sample-wordbook.html"),
+    );
+  await expect(page.locator("#importStatus")).toContainText(
+    "已载入 1 个生词本，共 2 个词条",
+  );
+  await expect(
+    page.locator('.deck-card[data-offset="0"] .card-word'),
+  ).toHaveText(/^(lucid|resilient)$/);
+  await expect(
+    page.locator('.deck-card[data-offset="0"] .card-progress-count'),
+  ).toContainText("/2");
 });
 
 test("记忆模式 Good 评分推进一次并清理动画状态", async ({ page }) => {

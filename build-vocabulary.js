@@ -10,6 +10,7 @@ const memoryCorePath = path.join(__dirname, 'memory-curve-core.js');
 const animationCoordinatorPath = path.join(__dirname, 'src', 'animations', 'animation-coordinator.js');
 const animationGeometryPath = path.join(__dirname, 'src', 'animations', 'geometry.js');
 const cardTransitionPath = path.join(__dirname, 'src', 'animations', 'card-transition.js');
+const wordbookParserPath = path.join(__dirname, 'src', 'features', 'wordbooks', 'parser.js');
 const fsrsEntryPath = require.resolve('ts-fsrs');
 const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
 const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
@@ -90,6 +91,7 @@ const embeddedMemoryCore = fs.readFileSync(memoryCorePath, 'utf8').replace(/[ \t
 const embeddedAnimationCoordinator = fs.readFileSync(animationCoordinatorPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedAnimationGeometry = fs.readFileSync(animationGeometryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedCardTransition = fs.readFileSync(cardTransitionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedWordbookParser = fs.readFileSync(wordbookParserPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
@@ -2773,6 +2775,7 @@ const output = `<!doctype html>
   <script>${embeddedAnimationCoordinator}</script>
   <script>${embeddedAnimationGeometry}</script>
   <script>${embeddedCardTransition}</script>
+  <script>${embeddedWordbookParser}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
@@ -4275,40 +4278,15 @@ const output = `<!doctype html>
     }
 
     function importedHtmlToText(html) {
-      return decodeImportedEntities(String(html))
-        .replace(/<script[\\s\\S]*?<\\/script>/gi, '')
-        .replace(/<style[\\s\\S]*?<\\/style>/gi, '')
-        .replace(/<br\\s*\\/?>/gi, '\\n')
-        .replace(/<\\/li\\s*>/gi, '\\n')
-        .replace(/<li[^>]*>/gi, '')
-        .replace(/<\\/(?:div|p|h[1-6]|ol|ul)\\s*>/gi, '\\n')
-        .replace(/<[^>]+>/g, '')
-        .replace(/\\r/g, '')
-        .split('\\n')
-        .map((line) => line.replace(/[\\t ]+/g, ' ').trim())
-        .filter(Boolean)
-        .join('\\n')
-        .trim();
+      return window.PidanvocaWordbooks.htmlToText(String(html), decodeImportedEntities);
     }
 
     function extractImportedNote(explanationHtml) {
-      const match = explanationHtml.match(/<!--meta files\\s+({[\\s\\S]*?})\\s*-->/i);
-      if (!match) return '';
-      try {
-        const meta = JSON.parse(match[1]);
-        return typeof meta.comment === 'string' ? meta.comment.trim() : '';
-      } catch {
-        return '';
-      }
+      return window.PidanvocaWordbooks.extractNote(explanationHtml);
     }
 
     function extractImportedMeaning(explanationHtml, note) {
-      let content = explanationHtml.replace(/<!--meta files[\\s\\S]*?-->/gi, '').trim();
-      if (note) {
-        const split = content.match(/^[\\s\\S]*?(?:<br\\s*\\/?>\\s*){2}([\\s\\S]*)$/i);
-        if (split) content = split[1];
-      }
-      return importedHtmlToText(content);
+      return window.PidanvocaWordbooks.extractMeaning(explanationHtml, note, importedHtmlToText);
     }
 
     function collectImportedRows(root, entries) {

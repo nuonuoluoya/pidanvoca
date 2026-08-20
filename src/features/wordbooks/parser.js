@@ -1,4 +1,15 @@
-"use strict";
+(function attachWordbookParser(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaWordbooks = Object.assign(
+      {},
+      root.PidanvocaWordbooks || {},
+      api,
+    );
+  }
+})(typeof globalThis !== "undefined" ? globalThis : this, function createWordbookParser() {
+  "use strict";
 
 const namedEntities = Object.freeze({
   amp: "&",
@@ -30,8 +41,8 @@ function decodeEntities(value) {
   );
 }
 
-function htmlToText(html) {
-  return decodeEntities(html)
+  function htmlToText(html, decode = decodeEntities) {
+    return decode(html)
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<br\s*\/?>/gi, "\n")
@@ -60,7 +71,7 @@ function extractNote(explanationHtml) {
   }
 }
 
-function extractMeaning(explanationHtml, note) {
+  function extractMeaning(explanationHtml, note, toText = htmlToText) {
   let content = String(explanationHtml)
     .replace(/<!--meta files[\s\S]*?-->/gi, "")
     .trim();
@@ -70,8 +81,8 @@ function extractMeaning(explanationHtml, note) {
     );
     if (split) content = split[1];
   }
-  return htmlToText(content);
-}
+    return toText(content);
+  }
 
 function parseWordbook(source, fileName = "wordbook.html") {
   const bodyMatch = String(source).match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
@@ -102,10 +113,11 @@ function parseWordbook(source, fileName = "wordbook.html") {
   return words;
 }
 
-module.exports = Object.freeze({
-  decodeEntities,
-  htmlToText,
-  extractNote,
-  extractMeaning,
-  parseWordbook,
+  return Object.freeze({
+    decodeEntities,
+    htmlToText,
+    extractNote,
+    extractMeaning,
+    parseWordbook,
+  });
 });
