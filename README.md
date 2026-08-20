@@ -2,7 +2,7 @@
 
 一个可离线使用的浏览器英语词卡应用。它把随机背词、分组学习、拼写练习和 FSRS 记忆曲线整合在同一套 3D 卡片界面中；学习数据默认只保存在当前浏览器，不需要账号或后端服务。
 
-`HTML / CSS / JavaScript` · `单文件可运行` · `离线学习` · `本地保存进度` · `响应式布局`
+`HTML / CSS / JavaScript` · `在线按需加载` · `单文件离线版` · `本地保存进度` · `响应式布局`
 
 ## 在线使用
 
@@ -57,15 +57,15 @@
 
 项目内置 7 套词书，共 **20,319 张词卡**。该数字是各词书词条数之和，不代表跨词书去重后的单词总量。
 
-| 词书 | 词条数 | 范围说明 |
-| --- | ---: | --- |
-| 小学英语 | 502 | 《义务教育英语课程标准（2022年版）》二级词汇表 |
-| 中考英语 | 1,600 | 同课程标准三级词汇表的累计范围，包含小学词汇 |
-| 高考英语 | 2,999 | 普通高中英语课程标准约 3,000 词累计范围；合并原表形式后生成 2,999 张卡片 |
-| 大学英语四级 | 4,114 | CET 考试大纲中未标“★”的四级词条 |
-| 大学英语六级 | 1,263 | CET 考试大纲中标“★”的六级增量词条，不重复收录四级词条 |
-| 考研英语 | 4,801 | 参考研究生招生考试英语考试大纲，具体词条按 ECDICT `ky` 标签整理 |
-| IELTS | 5,040 | 按 ECDICT `ielts` 标签整理的备考词表；IELTS 官方不发布固定指定词表 |
+| 词书         | 词条数 | 范围说明                                                                 |
+| ------------ | -----: | ------------------------------------------------------------------------ |
+| 小学英语     |    502 | 《义务教育英语课程标准（2022年版）》二级词汇表                           |
+| 中考英语     |  1,600 | 同课程标准三级词汇表的累计范围，包含小学词汇                             |
+| 高考英语     |  2,999 | 普通高中英语课程标准约 3,000 词累计范围；合并原表形式后生成 2,999 张卡片 |
+| 大学英语四级 |  4,114 | CET 考试大纲中未标“★”的四级词条                                          |
+| 大学英语六级 |  1,263 | CET 考试大纲中标“★”的六级增量词条，不重复收录四级词条                    |
+| 考研英语     |  4,801 | 参考研究生招生考试英语考试大纲，具体词条按 ECDICT `ky` 标签整理          |
+| IELTS        |  5,040 | 按 ECDICT `ielts` 标签整理的备考词表；IELTS 官方不发布固定指定词表       |
 
 词表范围主要参考[教育部课程标准](https://www.moe.gov.cn/srcsite/A26/s8001/202204/t20220420_619921.html)、[大学英语四、六级考试大纲](https://cet.neea.edu.cn/res/Home/1704/55b02330ac17274664f06d9d3db8249d.pdf)、[全国硕士研究生招生考试英语考试大纲](https://yankao.neea.edu.cn/xhtml1/report/21115/5092-1.htm)和[雅思官方备考说明](https://ielts.org/take-a-test/preparation-resources)。音标、中文释义及部分考试标签补充自 [ECDICT](https://github.com/skywind3000/ECDICT)。具体来源说明保留在各词书文件中。
 
@@ -76,9 +76,9 @@ git clone https://github.com/nuonuoluoya/pidanvoca.git
 cd pidanvoca
 ```
 
-直接使用浏览器打开 `index.html` 或 `vocabulary-flashcards.html` 即可。`index.html` 会自动跳转到完整应用；运行生成后的页面不需要安装依赖或启动服务器。
+在线版入口是 `index.html`，会跳转到 `dist/web/index.html`。它启动时只携带默认词书，切换其他内置词书时根据 manifest 按需加载；本地开发时应通过静态服务器访问，以便浏览器正常请求 JSON 词库。
 
-也可以只下载 [`vocabulary-flashcards.html`](./vocabulary-flashcards.html)。该文件已经内嵌页面代码、FSRS 调度器和全部内置词书，运行时不依赖 CDN。
+离线使用可只下载 [`vocabulary-flashcards.html`](./vocabulary-flashcards.html) 或 `dist/offline/vocabulary-flashcards.html`。两者都内嵌页面代码、FSRS 调度器和全部内置词书，可直接通过 `file://` 打开且不依赖 CDN。
 
 ## 使用方法
 
@@ -102,22 +102,22 @@ cd pidanvoca
 
 ### 经典模式
 
-| 按键 | 操作 |
-| --- | --- |
-| `→` / `Space` / `Enter` | 下一个单词 |
-| `←` | 上一个单词 |
-| `R` | 重新随机排序 |
-| `Esc` | 关闭设置或学习完成提示 |
+| 按键                    | 操作                   |
+| ----------------------- | ---------------------- |
+| `→` / `Space` / `Enter` | 下一个单词             |
+| `←`                     | 上一个单词             |
+| `R`                     | 重新随机排序           |
+| `Esc`                   | 关闭设置或学习完成提示 |
 
 ### 记忆曲线模式
 
-| 按键 | 操作 |
-| --- | --- |
-| `Space` | 显示答案 |
-| `1` / `←` | 选择“忘记” |
-| `2` / `→` | 选择“记得”（仅回忆模式） |
+| 按键           | 操作                         |
+| -------------- | ---------------------------- |
+| `Space`        | 显示答案                     |
+| `1` / `←`      | 选择“忘记”                   |
+| `2` / `→`      | 选择“记得”（仅回忆模式）     |
 | `Ctrl/Cmd + Z` | 撤销最近一次评分，可连续使用 |
-| `Esc` | 返回经典模式 |
+| `Esc`          | 返回经典模式                 |
 
 输入框获得焦点时，全局翻页和评分快捷键不会打断拼写输入。记忆曲线拼写练习中，输入正确答案会自动提交；按 `Enter` 可提交错误答案并查看正确单词。
 
@@ -137,13 +137,13 @@ cd pidanvoca
 
 兼容的词书使用 HTML 表格，每行至少包含以下 5 个单元格：
 
-| 列序号 | 内容 |
-| ---: | --- |
-| 1 | 编号，可留空 |
-| 2 | 单词 |
-| 3 | 音标 |
-| 4 | 等级或分类，可留空 |
-| 5 | 中文释义、词形或备注 |
+| 列序号 | 内容                 |
+| -----: | -------------------- |
+|      1 | 编号，可留空         |
+|      2 | 单词                 |
+|      3 | 音标                 |
+|      4 | 等级或分类，可留空   |
+|      5 | 中文释义、词形或备注 |
 
 同一次多文件导入会按不区分大小写的单词键去重；重复词条会尽量保留音标，并合并不同的释义和笔记。浏览器隐私模式、存储空间不足或禁用本地存储可能导致导入结果无法长期保留。
 
@@ -153,12 +153,13 @@ cd pidanvoca
 
 ```bash
 npm ci
-npm test
-npm run build
+npm run check
+npm run test:e2e
 ```
 
-- `npm test`：运行 `tests/memory-curve.test.js` 中的记忆曲线纯逻辑测试。
-- `npm run build`：读取 `wordbooks/`、`memory-curve-core.js` 和 `ts-fsrs@5.4.1`，重新生成 `vocabulary-flashcards.html`。
+- `npm run check`：依次运行 ESLint、格式检查、JavaScript 类型检查、Node 测试和可复现构建。
+- `npm run test:e2e`：在桌面和移动端 Chromium 中验证经典模式、记忆模式、设置、导入、动画、在线按需加载及 `file://` 离线启动。
+- `npm run build`：从同一套源码生成 `dist/web/index.html` 在线壳、`data/books.manifest.json` 与 JSON 词库、`dist/offline/vocabulary-flashcards.html`，并同步根目录离线文件。
 - 默认构建不会读取 `wordbooks/my/`，避免将私人词书写入生成文件。
 - 如确实需要把 `wordbooks/my/` 中的 HTML 词书嵌入构建结果，可在构建进程中设置 `INCLUDE_PERSONAL_WORDBOOKS=1`。生成文件将包含私人数据，提交或分享前请检查内容。
 
@@ -167,13 +168,19 @@ npm run build
 ```text
 .
 ├─ index.html                    # 入口页，跳转到完整应用
-├─ vocabulary-flashcards.html   # 构建生成的单文件应用
-├─ build-vocabulary.js          # 页面、交互与词书生成器
+├─ vocabulary-flashcards.html   # 构建生成的兼容单文件离线应用
+├─ data/
+│  ├─ books.manifest.json       # 稳定 ID、数量、Schema 与内容哈希
+│  └─ books/*.json              # 在线版按需加载的词库
+├─ dist/
+│  ├─ web/index.html            # GitHub Pages 在线应用壳
+│  └─ offline/*.html            # 可下载的自包含离线版
+├─ build-vocabulary.js          # 在线/离线双产物生成器
 ├─ memory-curve-core.js         # 可独立测试的记忆曲线纯逻辑
+├─ src/                         # 控制器、动画、存储和应用边界模块
 ├─ package.json                 # 构建、测试脚本和固定依赖
 ├─ package-lock.json            # npm 锁文件
-├─ tests/
-│  └─ memory-curve.test.js      # 记忆曲线逻辑测试
+├─ tests/                       # 单元、IndexedDB 集成与浏览器 E2E 测试
 ├─ wordbooks/
 │  ├─ *-vocabulary.html         # 7 套内置词书源文件
 │  └─ my/                       # 可选私人词书目录，默认构建忽略

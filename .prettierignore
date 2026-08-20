@@ -2,6 +2,8 @@ node_modules/
 design-concepts/
 wordbooks/
 build-vocabulary.js
+data/books/*.json
+dist/**/*.html
 vocabulary-flashcards.html
 README.md
 package-lock.json

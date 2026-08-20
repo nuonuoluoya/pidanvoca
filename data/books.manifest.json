@@ -1,0 +1,61 @@
+{
+  "formatVersion": 1,
+  "books": [
+    {
+      "id": "cet-6-vocabulary.html",
+      "name": "大学英语六级单词本",
+      "url": "./books/cet-6-vocabulary.json",
+      "wordCount": 1263,
+      "contentHash": "sha256-b2d18e80611ee63c78c93151c1c1003910630ba639352d27cb8825460d4311de",
+      "schemaVersion": 1
+    },
+    {
+      "id": "cet-4-vocabulary.html",
+      "name": "大学英语四级单词本",
+      "url": "./books/cet-4-vocabulary.json",
+      "wordCount": 4114,
+      "contentHash": "sha256-5bb823dc6d099f45219c0784d809206417d56d07724ccdf3b791f99c68887fde",
+      "schemaVersion": 1
+    },
+    {
+      "id": "college-entrance-exam-vocabulary.html",
+      "name": "高考英语单词本",
+      "url": "./books/college-entrance-exam-vocabulary.json",
+      "wordCount": 2999,
+      "contentHash": "sha256-d8aa6a0a59186d3366c548d4c002f71f97fa6ae92b3d0962b3dda069fb7872f8",
+      "schemaVersion": 1
+    },
+    {
+      "id": "postgraduate-entrance-exam-vocabulary.html",
+      "name": "考研英语单词本",
+      "url": "./books/postgraduate-entrance-exam-vocabulary.json",
+      "wordCount": 4801,
+      "contentHash": "sha256-a0349bf89f2f7bd3d706856a3c0021fce19de7545f1e3ba494cdb4e96428b674",
+      "schemaVersion": 1
+    },
+    {
+      "id": "primary-school-vocabulary.html",
+      "name": "小学英语单词本",
+      "url": "./books/primary-school-vocabulary.json",
+      "wordCount": 502,
+      "contentHash": "sha256-edaf7bc2711ef4484338daeebb4f443b088d639ca103d4e16727e24d4a1f6dd4",
+      "schemaVersion": 1
+    },
+    {
+      "id": "ielts-vocabulary.html",
+      "name": "雅思英语单词本",
+      "url": "./books/ielts-vocabulary.json",
+      "wordCount": 5040,
+      "contentHash": "sha256-643a540a801669ee546dd5e5fffedc10ac0e8a7a1466de3dd71b0078c968be49",
+      "schemaVersion": 1
+    },
+    {
+      "id": "junior-high-school-entrance-exam-vocabulary.html",
+      "name": "中考英语单词本",
+      "url": "./books/junior-high-school-entrance-exam-vocabulary.json",
+      "wordCount": 1600,
+      "contentHash": "sha256-833c244ac6dad0d574f8f0063f2fc6a2674559ee078c9879f691a589f4f15ae0",
+      "schemaVersion": 1
+    }
+  ]
+}

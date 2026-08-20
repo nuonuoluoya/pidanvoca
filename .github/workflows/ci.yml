@@ -52,4 +52,4 @@ jobs:
         run: npm run build
 
       - name: Verify generated application is committed
-        run: git diff --exit-code -- vocabulary-flashcards.html
+        run: git diff --exit-code -- vocabulary-flashcards.html data dist

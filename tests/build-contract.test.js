@@ -5,6 +5,14 @@ const test = require("node:test");
 
 const projectRoot = path.join(__dirname, "..");
 const generatedHtmlPath = path.join(projectRoot, "vocabulary-flashcards.html");
+const webHtmlPath = path.join(projectRoot, "dist", "web", "index.html");
+const offlineHtmlPath = path.join(
+  projectRoot,
+  "dist",
+  "offline",
+  "vocabulary-flashcards.html",
+);
+const manifestPath = path.join(projectRoot, "data", "books.manifest.json");
 const indexHtmlPath = path.join(projectRoot, "index.html");
 
 test("生成页面带有禁止直接编辑的构建标记", () => {
@@ -15,9 +23,33 @@ test("生成页面带有禁止直接编辑的构建标记", () => {
   );
 });
 
-test("GitHub Pages 入口指向生成页面并保留查询参数与哈希", () => {
+test("GitHub Pages 入口指向在线版并保留查询参数与哈希", () => {
   const html = fs.readFileSync(indexHtmlPath, "utf8");
-  assert.match(html, /url=\.\/vocabulary-flashcards\.html/);
+  assert.match(html, /url=\.\/dist\/web\/index\.html/);
   assert.match(html, /window\.location\.search\s*\+\s*window\.location\.hash/);
-  assert.match(html, /href="\.\/vocabulary-flashcards\.html"/);
+  assert.match(html, /href="\.\/dist\/web\/index\.html"/);
+});
+
+test("双构建分别生成按需在线壳与自包含离线文件", () => {
+  const webHtml = fs.readFileSync(webHtmlPath, "utf8");
+  const offlineHtml = fs.readFileSync(offlineHtmlPath, "utf8");
+  assert.match(webHtml, /const APP_BUILD_TARGET = 'web'/);
+  assert.match(webHtml, /"words":null/);
+  assert.match(offlineHtml, /const APP_BUILD_TARGET = 'offline'/);
+  assert.doesNotMatch(offlineHtml, /"words":null/);
+});
+
+test("词库清单保存稳定 ID、数量、Schema 与内容哈希", () => {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  assert.equal(manifest.formatVersion, 1);
+  assert.equal(manifest.books.length, 7);
+  manifest.books.forEach((book) => {
+    assert.match(book.id, /\.html$/);
+    assert.ok(book.wordCount > 0);
+    assert.match(book.contentHash, /^sha256-[a-f0-9]{64}$/);
+    assert.equal(book.schemaVersion, 1);
+    assert.ok(
+      fs.existsSync(path.resolve(path.dirname(manifestPath), book.url)),
+    );
+  });
 });

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "node build-vocabulary.js",
+    "build:all": "node build-vocabulary.js",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -16,7 +17,7 @@
     "test:unit": "node --test \"tests/*.test.js\"",
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
-    "ci:generated": "npm run build && git diff --exit-code -- vocabulary-flashcards.html"
+    "ci:generated": "npm run build && git diff --exit-code -- vocabulary-flashcards.html data dist"
   },
   "dependencies": {
     "ts-fsrs": "5.4.1"

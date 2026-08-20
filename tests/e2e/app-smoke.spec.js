@@ -1,5 +1,6 @@
 const { expect, test } = require("@playwright/test");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 test.beforeEach(async ({ page }) => {
   const runtimeErrors = [];
@@ -21,6 +22,48 @@ test.afterEach(async ({ page }) => {
 test("应用启动并渲染稳定主卡", async ({ page }) => {
   await expect(page).toHaveTitle(/随机单词本/);
   await expect(page.locator('.deck-card[data-offset="0"]')).toHaveCount(1);
+  await expect(page.locator("#memoryButton")).toBeEnabled();
+});
+
+test("在线版按需请求非默认词库并完成切换", async ({ page }) => {
+  await page.goto("/dist/web/index.html");
+  await expect(
+    page.locator('.deck-card[data-offset="0"] .card-word'),
+  ).toBeVisible();
+  await page.locator("#settingsButton").click();
+  await page.locator("#wordbookButton").click();
+  const otherBook = page
+    .locator('#builtInWordbookList .wordbook-option[aria-pressed="false"]')
+    .first();
+  const bookId = await otherBook.getAttribute("data-book-id");
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes("/data/books/") && response.status() === 200,
+  );
+  await otherBook.click();
+  await responsePromise;
+  await expect(
+    page.locator(
+      `#builtInWordbookList .wordbook-option[data-book-id="${bookId}"]`,
+    ),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#importStatus")).toContainText("已切换到");
+});
+
+test("单文件离线产物可通过 file 协议独立启动", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  const offlineFile = path.join(
+    __dirname,
+    "..",
+    "..",
+    "dist",
+    "offline",
+    "vocabulary-flashcards.html",
+  );
+  await page.goto(pathToFileURL(offlineFile).href);
+  await expect(
+    page.locator('.deck-card[data-offset="0"] .card-word'),
+  ).toBeVisible();
   await expect(page.locator("#memoryButton")).toBeEnabled();
 });
 

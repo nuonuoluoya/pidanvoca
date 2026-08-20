@@ -1,68 +1,180 @@
-const fs = require('fs');
-const path = require('path');
-const { parseWordbook } = require('./src/features/wordbooks/parser');
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const { parseWordbook } = require("./src/features/wordbooks/parser");
 
-const wordbooksPath = path.join(__dirname, 'wordbooks');
-const personalWordbooksPath = path.join(wordbooksPath, 'my');
-const defaultBookFileName = 'cet-4-vocabulary.html';
-const outputPath = path.join(__dirname, 'vocabulary-flashcards.html');
-const memoryCorePath = path.join(__dirname, 'memory-curve-core.js');
-const animationCoordinatorPath = path.join(__dirname, 'src', 'animations', 'animation-coordinator.js');
-const animationGeometryPath = path.join(__dirname, 'src', 'animations', 'geometry.js');
-const cardTransitionPath = path.join(__dirname, 'src', 'animations', 'card-transition.js');
-const wordbookParserPath = path.join(__dirname, 'src', 'features', 'wordbooks', 'parser.js');
-const wordbookControllerPath = path.join(__dirname, 'src', 'features', 'wordbooks', 'controller.js');
-const classicDeckModelPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'model.js');
-const classicDeckControllerPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'controller.js');
-const reviewSessionPath = path.join(__dirname, 'src', 'features', 'memory-review', 'review-session.js');
-const memoryReviewControllerPath = path.join(__dirname, 'src', 'features', 'memory-review', 'controller.js');
-const databaseModulePath = path.join(__dirname, 'src', 'services', 'storage', 'database.js');
-const reviewRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'review-repository.js');
-const wordbookRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'wordbook-repository.js');
-const settingsRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'settings-repository.js');
-const settingsControllerPath = path.join(__dirname, 'src', 'features', 'settings', 'controller.js');
-const appEventsPath = path.join(__dirname, 'src', 'app', 'events.js');
-const fsrsEntryPath = require.resolve('ts-fsrs');
-const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
-const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
+const wordbooksPath = path.join(__dirname, "wordbooks");
+const personalWordbooksPath = path.join(wordbooksPath, "my");
+const defaultBookFileName = "cet-4-vocabulary.html";
+const outputPath = path.join(__dirname, "vocabulary-flashcards.html");
+const dataPath = path.join(__dirname, "data");
+const dataBooksPath = path.join(dataPath, "books");
+const webOutputPath = path.join(__dirname, "dist", "web", "index.html");
+const offlineOutputPath = path.join(
+  __dirname,
+  "dist",
+  "offline",
+  "vocabulary-flashcards.html",
+);
+const memoryCorePath = path.join(__dirname, "memory-curve-core.js");
+const animationCoordinatorPath = path.join(
+  __dirname,
+  "src",
+  "animations",
+  "animation-coordinator.js",
+);
+const animationGeometryPath = path.join(
+  __dirname,
+  "src",
+  "animations",
+  "geometry.js",
+);
+const cardTransitionPath = path.join(
+  __dirname,
+  "src",
+  "animations",
+  "card-transition.js",
+);
+const wordbookParserPath = path.join(
+  __dirname,
+  "src",
+  "features",
+  "wordbooks",
+  "parser.js",
+);
+const wordbookControllerPath = path.join(
+  __dirname,
+  "src",
+  "features",
+  "wordbooks",
+  "controller.js",
+);
+const classicDeckModelPath = path.join(
+  __dirname,
+  "src",
+  "features",
+  "classic-deck",
+  "model.js",
+);
+const classicDeckControllerPath = path.join(
+  __dirname,
+  "src",
+  "features",
+  "classic-deck",
+  "controller.js",
+);
+const reviewSessionPath = path.join(
+  __dirname,
+  "src",
+  "features",
+  "memory-review",
+  "review-session.js",
+);
+const memoryReviewControllerPath = path.join(
+  __dirname,
+  "src",
+  "features",
+  "memory-review",
+  "controller.js",
+);
+const databaseModulePath = path.join(
+  __dirname,
+  "src",
+  "services",
+  "storage",
+  "database.js",
+);
+const reviewRepositoryPath = path.join(
+  __dirname,
+  "src",
+  "services",
+  "storage",
+  "review-repository.js",
+);
+const wordbookRepositoryPath = path.join(
+  __dirname,
+  "src",
+  "services",
+  "storage",
+  "wordbook-repository.js",
+);
+const settingsRepositoryPath = path.join(
+  __dirname,
+  "src",
+  "services",
+  "storage",
+  "settings-repository.js",
+);
+const settingsControllerPath = path.join(
+  __dirname,
+  "src",
+  "features",
+  "settings",
+  "controller.js",
+);
+const appEventsPath = path.join(__dirname, "src", "app", "events.js");
+const fsrsEntryPath = require.resolve("ts-fsrs");
+const fsrsBrowserBundlePath = path.join(
+  path.dirname(fsrsEntryPath),
+  "index.umd.js",
+);
+const fsrsPackagePath = path.join(
+  path.dirname(fsrsEntryPath),
+  "..",
+  "package.json",
+);
 const builtInBookDefinitions = [
-  { fileName: 'cet-6-vocabulary.html', name: '大学英语六级单词本' },
-  { fileName: 'cet-4-vocabulary.html', name: '大学英语四级单词本' },
-  { fileName: 'college-entrance-exam-vocabulary.html', name: '高考英语单词本' },
-  { fileName: 'postgraduate-entrance-exam-vocabulary.html', name: '考研英语单词本' },
-  { fileName: 'primary-school-vocabulary.html', name: '小学英语单词本' },
-  { fileName: 'ielts-vocabulary.html', name: '雅思英语单词本' },
-  { fileName: 'junior-high-school-entrance-exam-vocabulary.html', name: '中考英语单词本' }
+  { fileName: "cet-6-vocabulary.html", name: "大学英语六级单词本" },
+  { fileName: "cet-4-vocabulary.html", name: "大学英语四级单词本" },
+  { fileName: "college-entrance-exam-vocabulary.html", name: "高考英语单词本" },
+  {
+    fileName: "postgraduate-entrance-exam-vocabulary.html",
+    name: "考研英语单词本",
+  },
+  { fileName: "primary-school-vocabulary.html", name: "小学英语单词本" },
+  { fileName: "ielts-vocabulary.html", name: "雅思英语单词本" },
+  {
+    fileName: "junior-high-school-entrance-exam-vocabulary.html",
+    name: "中考英语单词本",
+  },
 ];
 const legacyBuiltInBookIds = {
-  '大学英语六级单词本.html': 'cet-6-vocabulary.html',
-  '大学英语四级单词本.html': 'cet-4-vocabulary.html',
-  '高考英语单词本.html': 'college-entrance-exam-vocabulary.html',
-  '考研英语单词本.html': 'postgraduate-entrance-exam-vocabulary.html',
-  '小学英语单词本.html': 'primary-school-vocabulary.html',
-  '雅思英语单词本.html': 'ielts-vocabulary.html',
-  '中考英语单词本.html': 'junior-high-school-entrance-exam-vocabulary.html'
+  "大学英语六级单词本.html": "cet-6-vocabulary.html",
+  "大学英语四级单词本.html": "cet-4-vocabulary.html",
+  "高考英语单词本.html": "college-entrance-exam-vocabulary.html",
+  "考研英语单词本.html": "postgraduate-entrance-exam-vocabulary.html",
+  "小学英语单词本.html": "primary-school-vocabulary.html",
+  "雅思英语单词本.html": "ielts-vocabulary.html",
+  "中考英语单词本.html": "junior-high-school-entrance-exam-vocabulary.html",
 };
 
 if (!fs.existsSync(wordbooksPath)) {
-  throw new Error('未找到 wordbooks 文件夹。');
+  throw new Error("未找到 wordbooks 文件夹。");
 }
 
 function listHtmlFiles(directoryPath) {
   if (!fs.existsSync(directoryPath)) return [];
-  return fs.readdirSync(directoryPath)
-  .filter((fileName) => /\.html?$/i.test(fileName))
-  .sort((left, right) => left.localeCompare(right, 'zh-CN'));
+  return fs
+    .readdirSync(directoryPath)
+    .filter((fileName) => /\.html?$/i.test(fileName))
+    .sort((left, right) => left.localeCompare(right, "zh-CN"));
 }
 
 function createCustomBookId(fileName) {
-  return 'custom:' + encodeURIComponent(String(fileName || '').trim().toLocaleLowerCase());
+  return (
+    "custom:" +
+    encodeURIComponent(
+      String(fileName || "")
+        .trim()
+        .toLocaleLowerCase(),
+    )
+  );
 }
 
 const wordbookFileNames = listHtmlFiles(wordbooksPath);
 
 if (!wordbookFileNames.length) {
-  throw new Error('wordbooks 文件夹中没有 HTML 生词本。');
+  throw new Error("wordbooks 文件夹中没有 HTML 生词本。");
 }
 
 const missingBuiltInBooks = builtInBookDefinitions
@@ -70,52 +182,175 @@ const missingBuiltInBooks = builtInBookDefinitions
   .filter((fileName) => !wordbookFileNames.includes(fileName));
 
 if (missingBuiltInBooks.length) {
-  throw new Error(`缺少内置生词本文件：${missingBuiltInBooks.join(', ')}`);
+  throw new Error(`缺少内置生词本文件：${missingBuiltInBooks.join(", ")}`);
 }
 
-const definedBookFileNames = new Set(builtInBookDefinitions.map((book) => book.fileName));
+const definedBookFileNames = new Set(
+  builtInBookDefinitions.map((book) => book.fileName),
+);
 const additionalBookDefinitions = wordbookFileNames
   .filter((fileName) => !definedBookFileNames.has(fileName))
   .map((fileName) => ({
     fileName,
-    name: path.basename(fileName, path.extname(fileName))
+    name: path.basename(fileName, path.extname(fileName)),
   }));
-const builtInBooks = builtInBookDefinitions.concat(additionalBookDefinitions).map(({ fileName, name }) => ({
-  id: fileName,
-  name,
-  fileName,
-  words: parseWordbook(fs.readFileSync(path.join(wordbooksPath, fileName), 'utf8'), fileName)
-}));
-const includePersonalWordbooks = process.env.INCLUDE_PERSONAL_WORDBOOKS === '1';
-const personalBooks = (includePersonalWordbooks ? listHtmlFiles(personalWordbooksPath) : []).map((fileName) => ({
+const builtInBooks = builtInBookDefinitions
+  .concat(additionalBookDefinitions)
+  .map(({ fileName, name }) => ({
+    id: fileName,
+    name,
+    fileName,
+    words: parseWordbook(
+      fs.readFileSync(path.join(wordbooksPath, fileName), "utf8"),
+      fileName,
+    ),
+  }));
+const bookArtifacts = builtInBooks.map((book) => {
+  const jsonFileName =
+    path.basename(book.fileName, path.extname(book.fileName)) + ".json";
+  const payload = {
+    formatVersion: 1,
+    id: book.id,
+    name: book.name,
+    words: book.words,
+  };
+  const json = JSON.stringify(payload) + "\n";
+  return {
+    book,
+    jsonFileName,
+    json,
+    contentHash:
+      "sha256-" +
+      crypto
+        .createHash("sha256")
+        .update(JSON.stringify(book.words))
+        .digest("hex"),
+  };
+});
+const booksManifest = {
+  formatVersion: 1,
+  books: bookArtifacts.map(({ book, jsonFileName, contentHash }) => ({
+    id: book.id,
+    name: book.name,
+    url: "./books/" + jsonFileName,
+    wordCount: book.words.length,
+    contentHash,
+    schemaVersion: 1,
+  })),
+};
+const includePersonalWordbooks = process.env.INCLUDE_PERSONAL_WORDBOOKS === "1";
+const personalBooks = (
+  includePersonalWordbooks ? listHtmlFiles(personalWordbooksPath) : []
+).map((fileName) => ({
   id: createCustomBookId(fileName),
   name: path.basename(fileName, path.extname(fileName)),
   fileName,
-  words: parseWordbook(fs.readFileSync(path.join(personalWordbooksPath, fileName), 'utf8'), fileName)
+  words: parseWordbook(
+    fs.readFileSync(path.join(personalWordbooksPath, fileName), "utf8"),
+    fileName,
+  ),
 }));
-const defaultBuiltInBook = builtInBooks.find((book) => book.fileName === defaultBookFileName) || builtInBooks[0];
-const embeddedBuiltInBooks = JSON.stringify(builtInBooks).replace(/</g, '\\u003c');
-const embeddedPersonalBooks = JSON.stringify(personalBooks).replace(/</g, '\\u003c');
+const defaultBuiltInBook =
+  builtInBooks.find((book) => book.fileName === defaultBookFileName) ||
+  builtInBooks[0];
+const embeddedBuiltInBooks = JSON.stringify(builtInBooks).replace(
+  /</g,
+  "\\u003c",
+);
+const onlineBuiltInBooks = builtInBooks.map((book) => {
+  const artifact = bookArtifacts.find((entry) => entry.book.id === book.id);
+  return {
+    id: book.id,
+    name: book.name,
+    fileName: book.fileName,
+    words: book.id === defaultBuiltInBook.id ? book.words : null,
+    wordCount: book.words.length,
+    contentHash: artifact.contentHash,
+    schemaVersion: 1,
+    url: "../../data/books/" + artifact.jsonFileName,
+  };
+});
+const embeddedOnlineBuiltInBooks = JSON.stringify(onlineBuiltInBooks).replace(
+  /</g,
+  "\\u003c",
+);
+const embeddedPersonalBooks = JSON.stringify(personalBooks).replace(
+  /</g,
+  "\\u003c",
+);
 const embeddedDefaultBookId = JSON.stringify(defaultBuiltInBook.id);
 const embeddedLegacyBuiltInBookIds = JSON.stringify(legacyBuiltInBookIds);
-const embeddedMemoryCore = fs.readFileSync(memoryCorePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedAnimationCoordinator = fs.readFileSync(animationCoordinatorPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedAnimationGeometry = fs.readFileSync(animationGeometryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedCardTransition = fs.readFileSync(cardTransitionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedWordbookParser = fs.readFileSync(wordbookParserPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedWordbookController = fs.readFileSync(wordbookControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedClassicDeckModel = fs.readFileSync(classicDeckModelPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedClassicDeckController = fs.readFileSync(classicDeckControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedReviewSession = fs.readFileSync(reviewSessionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedMemoryReviewController = fs.readFileSync(memoryReviewControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedDatabaseModule = fs.readFileSync(databaseModulePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedReviewRepository = fs.readFileSync(reviewRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedWordbookRepository = fs.readFileSync(wordbookRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedSettingsRepository = fs.readFileSync(settingsRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedSettingsController = fs.readFileSync(settingsControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedAppEvents = fs.readFileSync(appEventsPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
-const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
+const embeddedMemoryCore = fs
+  .readFileSync(memoryCorePath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedAnimationCoordinator = fs
+  .readFileSync(animationCoordinatorPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedAnimationGeometry = fs
+  .readFileSync(animationGeometryPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedCardTransition = fs
+  .readFileSync(cardTransitionPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedWordbookParser = fs
+  .readFileSync(wordbookParserPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedWordbookController = fs
+  .readFileSync(wordbookControllerPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedClassicDeckModel = fs
+  .readFileSync(classicDeckModelPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedClassicDeckController = fs
+  .readFileSync(classicDeckControllerPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedReviewSession = fs
+  .readFileSync(reviewSessionPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedMemoryReviewController = fs
+  .readFileSync(memoryReviewControllerPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedDatabaseModule = fs
+  .readFileSync(databaseModulePath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedReviewRepository = fs
+  .readFileSync(reviewRepositoryPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedWordbookRepository = fs
+  .readFileSync(wordbookRepositoryPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedSettingsRepository = fs
+  .readFileSync(settingsRepositoryPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedSettingsController = fs
+  .readFileSync(settingsControllerPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedAppEvents = fs
+  .readFileSync(appEventsPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedFsrsBundle = fs
+  .readFileSync(fsrsBrowserBundlePath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const fsrsPackageVersion = JSON.parse(
+  fs.readFileSync(fsrsPackagePath, "utf8"),
+).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
 
 const output = `<!doctype html>
@@ -2811,6 +3046,7 @@ const output = `<!doctype html>
   <script>${embeddedAppEvents}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
+    const APP_BUILD_TARGET = 'offline';
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
     const PROJECT_PERSONAL_BOOKS = ${embeddedPersonalBooks};
     const DEFAULT_BOOK_ID = ${embeddedDefaultBookId};
@@ -2903,6 +3139,27 @@ const output = `<!doctype html>
         meaning: typeof entry.meaning === 'string' ? entry.meaning : '',
         note: typeof entry.note === 'string' ? entry.note : ''
       };
+    }
+
+    function bookWordCount(book) {
+      return Array.isArray(book?.words) ? book.words.length : Number(book?.wordCount) || 0;
+    }
+
+    async function ensureBuiltInBookWords(bookId) {
+      const book = BUILT_IN_BOOKS.find((entry) => entry.id === bookId);
+      if (!book) return null;
+      if (Array.isArray(book.words)) return book;
+      if (!book.url || APP_BUILD_TARGET !== 'web') throw new Error('词库数据不可用，请重新构建应用。');
+      const response = await window.fetch(book.url, { cache: 'force-cache' });
+      if (!response.ok) throw new Error('词库加载失败（HTTP ' + response.status + '）。');
+      const payload = await response.json();
+      if (!payload || payload.formatVersion !== 1 || payload.id !== book.id || !Array.isArray(payload.words)) {
+        throw new Error('词库数据格式不兼容。');
+      }
+      const words = payload.words.map(normalizeStoredWord).filter(Boolean);
+      if (words.length !== book.wordCount) throw new Error('词库词条数量校验失败。');
+      book.words = words;
+      return book;
     }
 
     function createCustomBookId(fileName) {
@@ -3025,8 +3282,7 @@ const output = `<!doctype html>
 
     function loadRememberedVocabularyFromLocalStorage() {
       try {
-        const saved = JSON.parse(window.localStorage.getItem(vocabularyStorageKey) || 'null');
-        return normalizeRememberedPayload(saved);
+        return JSON.parse(window.localStorage.getItem(vocabularyStorageKey) || 'null');
       } catch {
         return null;
       }
@@ -3034,12 +3290,22 @@ const output = `<!doctype html>
 
     async function loadRememberedVocabulary() {
       try {
-        const rememberedVocabulary = normalizeRememberedPayload(await readRememberedPayload());
+        const saved = await readRememberedPayload();
+        const savedBuiltInBookId = typeof saved?.builtInBookId === 'string'
+          ? (LEGACY_BUILT_IN_BOOK_IDS[saved.builtInBookId] || saved.builtInBookId)
+          : null;
+        if (savedBuiltInBookId) await ensureBuiltInBookWords(savedBuiltInBookId);
+        const rememberedVocabulary = normalizeRememberedPayload(saved);
         if (rememberedVocabulary) return rememberedVocabulary;
       } catch {
         // File URLs and privacy modes may not expose IndexedDB; use the compatible fallback.
       }
-      const localVocabulary = loadRememberedVocabularyFromLocalStorage();
+      const localPayload = loadRememberedVocabularyFromLocalStorage();
+      const localBuiltInBookId = typeof localPayload?.builtInBookId === 'string'
+        ? (LEGACY_BUILT_IN_BOOK_IDS[localPayload.builtInBookId] || localPayload.builtInBookId)
+        : null;
+      if (localBuiltInBookId) await ensureBuiltInBookWords(localBuiltInBookId);
+      const localVocabulary = normalizeRememberedPayload(localPayload);
       if (localVocabulary) {
         writeRememberedPayload({
           version: 1,
@@ -4037,7 +4303,7 @@ const output = `<!doctype html>
             };
         const { reviewCards, reviewLogs, metaEntries: metaValues } = storedProgress;
         const bookIds = new Set(reviewCards.map((card) => card.bookId));
-        const books = BUILT_IN_BOOKS.concat(customBooks).filter((book) => bookIds.has(book.id)).map((book) => ({ id: book.id, name: book.name, fileName: book.fileName, wordCount: book.words.length }));
+        const books = BUILT_IN_BOOKS.concat(customBooks).filter((book) => bookIds.has(book.id)).map((book) => ({ id: book.id, name: book.name, fileName: book.fileName, wordCount: bookWordCount(book) }));
         const payload = {
           format: memoryCore.backupFormat,
           formatVersion: memoryCore.backupFormatVersion,
@@ -5048,7 +5314,7 @@ const output = `<!doctype html>
       button.setAttribute('aria-pressed', String(isActive));
       button.setAttribute('aria-expanded', String(isActive && expandedStudyBookId === book.id));
       button.setAttribute('aria-controls', 'studySizePanel');
-      button.setAttribute('aria-label', (isActive ? '当前单词本 ' : '使用单词本 ') + book.name + '，共 ' + book.words.length + ' 个词条' + (isActive ? '；点击设置每组数量' : ''));
+      button.setAttribute('aria-label', (isActive ? '当前单词本 ' : '使用单词本 ') + book.name + '，共 ' + bookWordCount(book) + ' 个词条' + (isActive ? '；点击设置每组数量' : ''));
 
       const name = document.createElement('span');
       name.className = 'wordbook-option__name';
@@ -5056,7 +5322,7 @@ const output = `<!doctype html>
 
       const count = document.createElement('span');
       count.className = 'wordbook-option__count';
-      count.textContent = book.words.length + ' 词';
+      count.textContent = bookWordCount(book) + ' 词';
 
       const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       chevron.classList.add('wordbook-option__chevron');
@@ -5110,17 +5376,32 @@ const output = `<!doctype html>
 
     async function selectBuiltInBook(bookId) {
       if (!isReady || isTransitioning || isImporting) return;
+      isImporting = true;
+      syncChrome();
+      try {
+        await ensureBuiltInBookWords(bookId);
+      } catch (error) {
+        isImporting = false;
+        syncChrome();
+        showImportStatus(error instanceof Error ? error.message : '词库加载失败，请稍后重试。', true);
+        return;
+      }
       const selection = wordbookController.selectBuiltIn(bookId);
-      if (selection.type === 'missing') return;
+      if (selection.type === 'missing') {
+        isImporting = false;
+        syncChrome();
+        return;
+      }
       const book = selection.book;
       if (selection.type === 'toggled') {
         renderWordbookLists();
         updateStudySizeControls();
         if (expandedStudyBookId) window.setTimeout(scrollExpandedStudyBook, 80);
+        isImporting = false;
+        syncChrome();
         return;
       }
 
-      isImporting = true;
       renderWordbookLists();
       shuffle();
       window.setTimeout(scrollExpandedStudyBook, 80);
@@ -5134,7 +5415,7 @@ const output = `<!doctype html>
         fileNames: [book.fileName]
       });
       if (activeBuiltInBookId !== book.id) return;
-      showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条；请选择每组数量' + (remembered ? '' : '；浏览器未能保存本次选择'));
+      showImportStatus('已切换到“' + book.name + '”，共 ' + bookWordCount(book) + ' 个词条；请选择每组数量' + (remembered ? '' : '；浏览器未能保存本次选择'));
     }
 
     async function selectCustomBook(bookId) {
@@ -5163,7 +5444,7 @@ const output = `<!doctype html>
         fileNames: [book.fileName]
       });
       if (activeCustomBookId !== book.id) return;
-      showImportStatus('已切换到“' + book.name + '”，共 ' + book.words.length + ' 个词条；请选择每组数量' + (remembered ? '' : '；浏览器未能保存本次选择'));
+      showImportStatus('已切换到“' + book.name + '”，共 ' + bookWordCount(book) + ' 个词条；请选择每组数量' + (remembered ? '' : '；浏览器未能保存本次选择'));
     }
 
     async function deleteCustomBook(bookId) {
@@ -5437,5 +5718,34 @@ const output = `<!doctype html>
 </body>
 </html>`;
 
-fs.writeFileSync(outputPath, output, 'utf8');
-console.log(`已生成 ${path.basename(outputPath)}，内置 ${builtInBooks.length} 个单词本、我的单词本 ${personalBooks.length} 个，共 ${builtInBooks.concat(personalBooks).reduce((total, book) => total + book.words.length, 0)} 个词条。`);
+const webOutput = output
+  .replace(
+    "const APP_BUILD_TARGET = 'offline';",
+    "const APP_BUILD_TARGET = 'web';",
+  )
+  .replace(
+    `const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};`,
+    `const BUILT_IN_BOOKS = ${embeddedOnlineBuiltInBooks};`,
+  );
+
+fs.mkdirSync(dataBooksPath, { recursive: true });
+fs.mkdirSync(path.dirname(webOutputPath), { recursive: true });
+fs.mkdirSync(path.dirname(offlineOutputPath), { recursive: true });
+bookArtifacts.forEach((artifact) => {
+  fs.writeFileSync(
+    path.join(dataBooksPath, artifact.jsonFileName),
+    artifact.json,
+    "utf8",
+  );
+});
+fs.writeFileSync(
+  path.join(dataPath, "books.manifest.json"),
+  JSON.stringify(booksManifest, null, 2) + "\n",
+  "utf8",
+);
+fs.writeFileSync(outputPath, output, "utf8");
+fs.writeFileSync(offlineOutputPath, output, "utf8");
+fs.writeFileSync(webOutputPath, webOutput, "utf8");
+console.log(
+  `已生成在线版与单文件离线版，内置 ${builtInBooks.length} 个单词本、我的单词本 ${personalBooks.length} 个，共 ${builtInBooks.concat(personalBooks).reduce((total, book) => total + book.words.length, 0)} 个词条。`,
+);
