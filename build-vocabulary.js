@@ -12,6 +12,7 @@ const animationGeometryPath = path.join(__dirname, 'src', 'animations', 'geometr
 const cardTransitionPath = path.join(__dirname, 'src', 'animations', 'card-transition.js');
 const wordbookParserPath = path.join(__dirname, 'src', 'features', 'wordbooks', 'parser.js');
 const classicDeckModelPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'model.js');
+const reviewSessionPath = path.join(__dirname, 'src', 'features', 'memory-review', 'review-session.js');
 const fsrsEntryPath = require.resolve('ts-fsrs');
 const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
 const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
@@ -94,6 +95,7 @@ const embeddedAnimationGeometry = fs.readFileSync(animationGeometryPath, 'utf8')
 const embeddedCardTransition = fs.readFileSync(cardTransitionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedWordbookParser = fs.readFileSync(wordbookParserPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedClassicDeckModel = fs.readFileSync(classicDeckModelPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedReviewSession = fs.readFileSync(reviewSessionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
@@ -2779,6 +2781,7 @@ const output = `<!doctype html>
   <script>${embeddedCardTransition}</script>
   <script>${embeddedWordbookParser}</script>
   <script>${embeddedClassicDeckModel}</script>
+  <script>${embeddedReviewSession}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
@@ -3262,7 +3265,7 @@ const output = `<!doctype html>
     }
 
     function memoryWordMap() {
-      return new Map(WORDS.map((entry) => [memoryCore.normalizeWordKey(entry.word), entry]));
+      return window.PidanvocaMemoryReview.createWordMap(WORDS, memoryCore.normalizeWordKey);
     }
 
     function memoryRecordFromCard(bookId, word, card) {
@@ -3425,11 +3428,16 @@ const output = `<!doctype html>
       const bookId = activeMemoryBookId();
       if (!bookId) throw new Error('请先在“单词本”中选择一个具体词库。');
       const overview = await memoryOverview(bookId);
-      const wordMap = memoryWordMap();
-      const dueItems = overview.due.map((record) => ({ word: wordMap.get(record.wordKey), record, isNew: false }));
       const selectedKeys = await memoryDailySelection(bookId, overview);
-      const newItems = selectedKeys.map((wordKey) => ({ word: wordMap.get(wordKey), record: null, isNew: true })).filter((item) => item.word);
-      return { items: dueItems.concat(newItems), dueCount: dueItems.length, newCount: newItems.length, learnedCount: overview.learned.size };
+      return {
+        ...window.PidanvocaMemoryReview.buildReviewQueue(
+          WORDS,
+          overview.due,
+          selectedKeys,
+          memoryCore.normalizeWordKey
+        ),
+        learnedCount: overview.learned.size
+      };
     }
 
     function memoryCurrentItem() {
@@ -3978,11 +3986,21 @@ const output = `<!doctype html>
           memoryVolatileLogs.set(logId, logRecord);
         }
         const exitPoint = createExitPoint();
-        memoryActionHistory.push({ logId, beforeRecord: item.record ? { ...item.record } : null, afterRecord, queueIndex: memoryIndex, wasNew: item.isNew, exitPoint });
-        if (item.isNew) memorySessionNew += 1;
-        else memorySessionReviewed += 1;
+        const sessionUpdate = window.PidanvocaMemoryReview.applyRating(
+          { index: memoryIndex, reviewed: memorySessionReviewed, learnedNew: memorySessionNew },
+          {
+            logId,
+            beforeRecord: item.record,
+            afterRecord,
+            wasNew: item.isNew,
+            exitPoint
+          }
+        );
+        memoryActionHistory.push(sessionUpdate.action);
+        memorySessionReviewed = sessionUpdate.reviewed;
+        memorySessionNew = sessionUpdate.learnedNew;
         item.record = afterRecord;
-        memoryIndex += 1;
+        memoryIndex = sessionUpdate.index;
         if (transition.isActive()) {
           transition.move('exiting-current');
           await transitionMemoryCardAfterRating(exitPoint, rating === window.FSRS.Rating.Good, transition);
@@ -4042,11 +4060,15 @@ const output = `<!doctype html>
       }
 
       memoryActionHistory.pop();
-      memoryIndex = action.queueIndex;
+      const restoredSession = window.PidanvocaMemoryReview.undoRating(
+        { index: memoryIndex, reviewed: memorySessionReviewed, learnedNew: memorySessionNew },
+        action
+      );
+      memoryIndex = restoredSession.index;
+      memorySessionReviewed = restoredSession.reviewed;
+      memorySessionNew = restoredSession.learnedNew;
       const item = memoryQueue[memoryIndex];
       if (item) item.record = action.beforeRecord ? { ...action.beforeRecord } : null;
-      if (action.wasNew) memorySessionNew = Math.max(0, memorySessionNew - 1);
-      else memorySessionReviewed = Math.max(0, memorySessionReviewed - 1);
       try {
         if (transition.isActive()) await transitionMemoryCardAfterUndo(action.exitPoint, transition);
         else renderMemoryCard(false);

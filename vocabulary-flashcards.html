@@ -3386,6 +3386,98 @@ function parseWordbook(source, fileName = "wordbook.html") {
   },
 );
 </script>
+  <script>(function attachReviewSession(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaMemoryReview = Object.assign(
+      {},
+      root.PidanvocaMemoryReview || {},
+      api,
+    );
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createReviewSessionApi() {
+    "use strict";
+
+    function createWordMap(words, normalizeWordKey) {
+      const map = new Map();
+      words.forEach((word) => {
+        const key = normalizeWordKey(word?.word);
+        if (key && !map.has(key)) map.set(key, word);
+      });
+      return map;
+    }
+
+    function buildReviewQueue(
+      words,
+      dueRecords,
+      selectedNewKeys,
+      normalizeWordKey,
+    ) {
+      const wordMap = createWordMap(words, normalizeWordKey);
+      const dueItems = dueRecords
+        .map((record) => ({
+          word: wordMap.get(record.wordKey),
+          record,
+          isNew: false,
+        }))
+        .filter((item) => item.word);
+      const dueKeys = new Set(
+        dueItems.map((item) => normalizeWordKey(item.word.word)),
+      );
+      const newItems = [];
+      const seenNew = new Set();
+      selectedNewKeys.forEach((wordKey) => {
+        const normalizedKey = normalizeWordKey(wordKey);
+        const word = wordMap.get(normalizedKey);
+        if (!word || dueKeys.has(normalizedKey) || seenNew.has(normalizedKey))
+          return;
+        seenNew.add(normalizedKey);
+        newItems.push({ word, record: null, isNew: true });
+      });
+      return {
+        items: dueItems.concat(newItems),
+        dueCount: dueItems.length,
+        newCount: newItems.length,
+      };
+    }
+
+    function applyRating(state, payload) {
+      const action = Object.freeze({
+        logId: payload.logId,
+        beforeRecord: payload.beforeRecord ? { ...payload.beforeRecord } : null,
+        afterRecord: payload.afterRecord,
+        queueIndex: state.index,
+        wasNew: Boolean(payload.wasNew),
+        exitPoint: payload.exitPoint,
+      });
+      return {
+        index: state.index + 1,
+        reviewed: state.reviewed + (action.wasNew ? 0 : 1),
+        learnedNew: state.learnedNew + (action.wasNew ? 1 : 0),
+        action,
+      };
+    }
+
+    function undoRating(state, action) {
+      return {
+        index: action.queueIndex,
+        reviewed: Math.max(0, state.reviewed - (action.wasNew ? 0 : 1)),
+        learnedNew: Math.max(0, state.learnedNew - (action.wasNew ? 1 : 0)),
+      };
+    }
+
+    return Object.freeze({
+      createWordMap,
+      buildReviewQueue,
+      applyRating,
+      undoRating,
+    });
+  },
+);
+</script>
   <script>/* ts-fsrs 5.4.1, MIT License */
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
@@ -5863,7 +5955,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     function memoryWordMap() {
-      return new Map(WORDS.map((entry) => [memoryCore.normalizeWordKey(entry.word), entry]));
+      return window.PidanvocaMemoryReview.createWordMap(WORDS, memoryCore.normalizeWordKey);
     }
 
     function memoryRecordFromCard(bookId, word, card) {
@@ -6026,11 +6118,16 @@ function parseWordbook(source, fileName = "wordbook.html") {
       const bookId = activeMemoryBookId();
       if (!bookId) throw new Error('请先在“单词本”中选择一个具体词库。');
       const overview = await memoryOverview(bookId);
-      const wordMap = memoryWordMap();
-      const dueItems = overview.due.map((record) => ({ word: wordMap.get(record.wordKey), record, isNew: false }));
       const selectedKeys = await memoryDailySelection(bookId, overview);
-      const newItems = selectedKeys.map((wordKey) => ({ word: wordMap.get(wordKey), record: null, isNew: true })).filter((item) => item.word);
-      return { items: dueItems.concat(newItems), dueCount: dueItems.length, newCount: newItems.length, learnedCount: overview.learned.size };
+      return {
+        ...window.PidanvocaMemoryReview.buildReviewQueue(
+          WORDS,
+          overview.due,
+          selectedKeys,
+          memoryCore.normalizeWordKey
+        ),
+        learnedCount: overview.learned.size
+      };
     }
 
     function memoryCurrentItem() {
@@ -6579,11 +6676,21 @@ function parseWordbook(source, fileName = "wordbook.html") {
           memoryVolatileLogs.set(logId, logRecord);
         }
         const exitPoint = createExitPoint();
-        memoryActionHistory.push({ logId, beforeRecord: item.record ? { ...item.record } : null, afterRecord, queueIndex: memoryIndex, wasNew: item.isNew, exitPoint });
-        if (item.isNew) memorySessionNew += 1;
-        else memorySessionReviewed += 1;
+        const sessionUpdate = window.PidanvocaMemoryReview.applyRating(
+          { index: memoryIndex, reviewed: memorySessionReviewed, learnedNew: memorySessionNew },
+          {
+            logId,
+            beforeRecord: item.record,
+            afterRecord,
+            wasNew: item.isNew,
+            exitPoint
+          }
+        );
+        memoryActionHistory.push(sessionUpdate.action);
+        memorySessionReviewed = sessionUpdate.reviewed;
+        memorySessionNew = sessionUpdate.learnedNew;
         item.record = afterRecord;
-        memoryIndex += 1;
+        memoryIndex = sessionUpdate.index;
         if (transition.isActive()) {
           transition.move('exiting-current');
           await transitionMemoryCardAfterRating(exitPoint, rating === window.FSRS.Rating.Good, transition);
@@ -6643,11 +6750,15 @@ function parseWordbook(source, fileName = "wordbook.html") {
       }
 
       memoryActionHistory.pop();
-      memoryIndex = action.queueIndex;
+      const restoredSession = window.PidanvocaMemoryReview.undoRating(
+        { index: memoryIndex, reviewed: memorySessionReviewed, learnedNew: memorySessionNew },
+        action
+      );
+      memoryIndex = restoredSession.index;
+      memorySessionReviewed = restoredSession.reviewed;
+      memorySessionNew = restoredSession.learnedNew;
       const item = memoryQueue[memoryIndex];
       if (item) item.record = action.beforeRecord ? { ...action.beforeRecord } : null;
-      if (action.wasNew) memorySessionNew = Math.max(0, memorySessionNew - 1);
-      else memorySessionReviewed = Math.max(0, memorySessionReviewed - 1);
       try {
         if (transition.isActive()) await transitionMemoryCardAfterUndo(action.exitPoint, transition);
         else renderMemoryCard(false);
