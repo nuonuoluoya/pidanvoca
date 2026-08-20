@@ -3633,6 +3633,175 @@ function parseWordbook(source, fileName = "wordbook.html") {
   },
 );
 </script>
+  <script>(function attachReviewRepository(root, factory) {
+  const storage =
+    typeof module === "object" && module.exports
+      ? require("./database")
+      : root.PidanvocaStorage;
+  const api = factory(storage);
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaStorage = Object.assign({}, root.PidanvocaStorage || {}, api);
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createReviewRepositoryApi(storage) {
+    "use strict";
+
+    const stores = storage.schema.stores;
+
+    function createReviewRepository({ databaseClient, keyRange }) {
+      async function readAll(storeName) {
+        return databaseClient.runTransaction(
+          storeName,
+          "readonly",
+          (transaction) =>
+            storage.requestResult(transaction.objectStore(storeName).getAll()),
+        );
+      }
+
+      async function readMeta(key) {
+        return databaseClient.runTransaction(
+          stores.reviewMeta,
+          "readonly",
+          (transaction) =>
+            storage.requestResult(
+              transaction.objectStore(stores.reviewMeta).get(key),
+            ),
+        );
+      }
+
+      async function writeMeta(key, value) {
+        return databaseClient.runTransaction(
+          stores.reviewMeta,
+          "readwrite",
+          (transaction) => {
+            transaction.objectStore(stores.reviewMeta).put(value, key);
+          },
+        );
+      }
+
+      async function cardsForBook(bookId) {
+        return databaseClient.runTransaction(
+          stores.reviewCards,
+          "readonly",
+          (transaction) => {
+            const index = transaction
+              .objectStore(stores.reviewCards)
+              .index("bookDue");
+            const range = keyRange.bound(
+              [bookId, 0],
+              [bookId, Number.MAX_SAFE_INTEGER],
+            );
+            return storage.requestResult(index.getAll(range));
+          },
+        );
+      }
+
+      async function dueCardsForBook(bookId, now) {
+        return databaseClient.runTransaction(
+          stores.reviewCards,
+          "readonly",
+          (transaction) => {
+            const index = transaction
+              .objectStore(stores.reviewCards)
+              .index("bookDue");
+            const range = keyRange.bound([bookId, 0], [bookId, Number(now)]);
+            return storage.requestResult(index.getAll(range));
+          },
+        );
+      }
+
+      async function saveReview(card, log) {
+        return databaseClient.runTransaction(
+          [stores.reviewCards, stores.reviewLogs],
+          "readwrite",
+          (transaction) => {
+            transaction.objectStore(stores.reviewCards).put(card);
+            transaction.objectStore(stores.reviewLogs).put(log);
+          },
+        );
+      }
+
+      async function undoReview(action) {
+        return databaseClient.runTransaction(
+          [stores.reviewCards, stores.reviewLogs],
+          "readwrite",
+          (transaction) => {
+            const cardStore = transaction.objectStore(stores.reviewCards);
+            if (action.beforeRecord) cardStore.put(action.beforeRecord);
+            else cardStore.delete(action.afterRecord.cardId);
+            transaction.objectStore(stores.reviewLogs).delete(action.logId);
+          },
+        );
+      }
+
+      return Object.freeze({
+        readAll,
+        readMeta,
+        writeMeta,
+        cardsForBook,
+        dueCardsForBook,
+        saveReview,
+        undoReview,
+      });
+    }
+
+    return Object.freeze({ createReviewRepository });
+  },
+);
+</script>
+  <script>(function attachWordbookRepository(root, factory) {
+  const storage =
+    typeof module === "object" && module.exports
+      ? require("./database")
+      : root.PidanvocaStorage;
+  const api = factory(storage);
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaStorage = Object.assign({}, root.PidanvocaStorage || {}, api);
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createWordbookRepositoryApi(storage) {
+    "use strict";
+
+    function createWordbookRepository({
+      databaseClient,
+      recordKey = "last-import",
+    }) {
+      async function readLastImport() {
+        return databaseClient.runTransaction(
+          storage.schema.stores.state,
+          "readonly",
+          async (transaction) =>
+            (await storage.requestResult(
+              transaction
+                .objectStore(storage.schema.stores.state)
+                .get(recordKey),
+            )) || null,
+        );
+      }
+
+      async function writeLastImport(payload) {
+        return databaseClient.runTransaction(
+          storage.schema.stores.state,
+          "readwrite",
+          (transaction) => {
+            transaction
+              .objectStore(storage.schema.stores.state)
+              .put(payload, recordKey);
+          },
+        );
+      }
+
+      return Object.freeze({ readLastImport, writeLastImport });
+    }
+
+    return Object.freeze({ createWordbookRepository });
+  },
+);
+</script>
   <script>/* ts-fsrs 5.4.1, MIT License */
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
@@ -5665,6 +5834,14 @@ function parseWordbook(source, fileName = "wordbook.html") {
       name: vocabularyDatabaseName,
       version: vocabularyDatabaseVersion
     });
+    const reviewRepository = window.PidanvocaStorage.createReviewRepository({
+      databaseClient: vocabularyDatabase,
+      keyRange: window.IDBKeyRange
+    });
+    const wordbookRepository = window.PidanvocaStorage.createWordbookRepository({
+      databaseClient: vocabularyDatabase,
+      recordKey: vocabularyDatabaseRecord
+    });
 
     function normalizeStudySize(value) {
       if (value === 'all' || value === Infinity) return Infinity;
@@ -5808,24 +5985,11 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     async function readRememberedPayload() {
-      const database = await openVocabularyDatabase();
-      return new Promise((resolve, reject) => {
-        const transaction = database.transaction(vocabularyDatabaseStore, 'readonly');
-        const request = transaction.objectStore(vocabularyDatabaseStore).get(vocabularyDatabaseRecord);
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error || new Error('IndexedDB read failed'));
-      });
+      return wordbookRepository.readLastImport();
     }
 
     async function writeRememberedPayload(payload) {
-      const database = await openVocabularyDatabase();
-      return new Promise((resolve, reject) => {
-        const transaction = database.transaction(vocabularyDatabaseStore, 'readwrite');
-        transaction.objectStore(vocabularyDatabaseStore).put(payload, vocabularyDatabaseRecord);
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error || new Error('IndexedDB write failed'));
-        transaction.onabort = () => reject(transaction.error || new Error('IndexedDB write aborted'));
-      });
+      return wordbookRepository.writeLastImport(payload);
     }
 
     function memoryRequest(request) {
@@ -5837,38 +6001,23 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     async function memoryReadAll(storeName) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(storeName, 'readonly');
-      return memoryRequest(transaction.objectStore(storeName).getAll());
+      return reviewRepository.readAll(storeName);
     }
 
     async function memoryReadMeta(key) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(memoryMetaStore, 'readonly');
-      return memoryRequest(transaction.objectStore(memoryMetaStore).get(key));
+      return reviewRepository.readMeta(key);
     }
 
     async function memoryWriteMeta(key, value) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(memoryMetaStore, 'readwrite');
-      transaction.objectStore(memoryMetaStore).put(value, key);
-      await memoryTransactionDone(transaction);
+      return reviewRepository.writeMeta(key, value);
     }
 
     async function memoryCardsForBook(bookId) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(memoryCardStore, 'readonly');
-      const index = transaction.objectStore(memoryCardStore).index('bookDue');
-      const range = IDBKeyRange.bound([bookId, 0], [bookId, Number.MAX_SAFE_INTEGER]);
-      return memoryRequest(index.getAll(range));
+      return reviewRepository.cardsForBook(bookId);
     }
 
     async function memoryDueCardsForBook(bookId, now) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(memoryCardStore, 'readonly');
-      const index = transaction.objectStore(memoryCardStore).index('bookDue');
-      const range = IDBKeyRange.bound([bookId, 0], [bookId, Number(now)]);
-      return memoryRequest(index.getAll(range));
+      return reviewRepository.dueCardsForBook(bookId, now);
     }
 
     function settleWithin(promise, milliseconds) {
@@ -6789,11 +6938,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
           parameterVersion: memoryParameterVersion
         };
         if (memoryStorageAvailable) {
-          const database = await openVocabularyDatabase();
-          const transaction = database.transaction([memoryCardStore, memoryLogStore], 'readwrite');
-          transaction.objectStore(memoryCardStore).put(afterRecord);
-          transaction.objectStore(memoryLogStore).put(logRecord);
-          await memoryTransactionDone(transaction);
+          await reviewRepository.saveReview(afterRecord, logRecord);
         } else {
           memoryVolatileCards.set(afterRecord.cardId, afterRecord);
           memoryVolatileLogs.set(logId, logRecord);
@@ -6851,13 +6996,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
       const transition = animationCoordinator.begin('undo-returning', { mode: 'memory', direction: 'backward' });
       try {
         if (memoryStorageAvailable) {
-          const database = await openVocabularyDatabase();
-          const transaction = database.transaction([memoryCardStore, memoryLogStore], 'readwrite');
-          const cardStore = transaction.objectStore(memoryCardStore);
-          if (action.beforeRecord) cardStore.put(action.beforeRecord);
-          else cardStore.delete(action.afterRecord.cardId);
-          transaction.objectStore(memoryLogStore).delete(action.logId);
-          await memoryTransactionDone(transaction);
+          await reviewRepository.undoReview(action);
         } else {
           if (action.beforeRecord) memoryVolatileCards.set(action.beforeRecord.cardId, action.beforeRecord);
           else memoryVolatileCards.delete(action.afterRecord.cardId);

@@ -14,6 +14,8 @@ const wordbookParserPath = path.join(__dirname, 'src', 'features', 'wordbooks', 
 const classicDeckModelPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'model.js');
 const reviewSessionPath = path.join(__dirname, 'src', 'features', 'memory-review', 'review-session.js');
 const databaseModulePath = path.join(__dirname, 'src', 'services', 'storage', 'database.js');
+const reviewRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'review-repository.js');
+const wordbookRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'wordbook-repository.js');
 const fsrsEntryPath = require.resolve('ts-fsrs');
 const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
 const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
@@ -98,6 +100,8 @@ const embeddedWordbookParser = fs.readFileSync(wordbookParserPath, 'utf8').repla
 const embeddedClassicDeckModel = fs.readFileSync(classicDeckModelPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedReviewSession = fs.readFileSync(reviewSessionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedDatabaseModule = fs.readFileSync(databaseModulePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedReviewRepository = fs.readFileSync(reviewRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedWordbookRepository = fs.readFileSync(wordbookRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
@@ -2785,6 +2789,8 @@ const output = `<!doctype html>
   <script>${embeddedClassicDeckModel}</script>
   <script>${embeddedReviewSession}</script>
   <script>${embeddedDatabaseModule}</script>
+  <script>${embeddedReviewRepository}</script>
+  <script>${embeddedWordbookRepository}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
@@ -2822,6 +2828,14 @@ const output = `<!doctype html>
       indexedDB: window.indexedDB,
       name: vocabularyDatabaseName,
       version: vocabularyDatabaseVersion
+    });
+    const reviewRepository = window.PidanvocaStorage.createReviewRepository({
+      databaseClient: vocabularyDatabase,
+      keyRange: window.IDBKeyRange
+    });
+    const wordbookRepository = window.PidanvocaStorage.createWordbookRepository({
+      databaseClient: vocabularyDatabase,
+      recordKey: vocabularyDatabaseRecord
     });
 
     function normalizeStudySize(value) {
@@ -2966,24 +2980,11 @@ const output = `<!doctype html>
     }
 
     async function readRememberedPayload() {
-      const database = await openVocabularyDatabase();
-      return new Promise((resolve, reject) => {
-        const transaction = database.transaction(vocabularyDatabaseStore, 'readonly');
-        const request = transaction.objectStore(vocabularyDatabaseStore).get(vocabularyDatabaseRecord);
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error || new Error('IndexedDB read failed'));
-      });
+      return wordbookRepository.readLastImport();
     }
 
     async function writeRememberedPayload(payload) {
-      const database = await openVocabularyDatabase();
-      return new Promise((resolve, reject) => {
-        const transaction = database.transaction(vocabularyDatabaseStore, 'readwrite');
-        transaction.objectStore(vocabularyDatabaseStore).put(payload, vocabularyDatabaseRecord);
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error || new Error('IndexedDB write failed'));
-        transaction.onabort = () => reject(transaction.error || new Error('IndexedDB write aborted'));
-      });
+      return wordbookRepository.writeLastImport(payload);
     }
 
     function memoryRequest(request) {
@@ -2995,38 +2996,23 @@ const output = `<!doctype html>
     }
 
     async function memoryReadAll(storeName) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(storeName, 'readonly');
-      return memoryRequest(transaction.objectStore(storeName).getAll());
+      return reviewRepository.readAll(storeName);
     }
 
     async function memoryReadMeta(key) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(memoryMetaStore, 'readonly');
-      return memoryRequest(transaction.objectStore(memoryMetaStore).get(key));
+      return reviewRepository.readMeta(key);
     }
 
     async function memoryWriteMeta(key, value) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(memoryMetaStore, 'readwrite');
-      transaction.objectStore(memoryMetaStore).put(value, key);
-      await memoryTransactionDone(transaction);
+      return reviewRepository.writeMeta(key, value);
     }
 
     async function memoryCardsForBook(bookId) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(memoryCardStore, 'readonly');
-      const index = transaction.objectStore(memoryCardStore).index('bookDue');
-      const range = IDBKeyRange.bound([bookId, 0], [bookId, Number.MAX_SAFE_INTEGER]);
-      return memoryRequest(index.getAll(range));
+      return reviewRepository.cardsForBook(bookId);
     }
 
     async function memoryDueCardsForBook(bookId, now) {
-      const database = await openVocabularyDatabase();
-      const transaction = database.transaction(memoryCardStore, 'readonly');
-      const index = transaction.objectStore(memoryCardStore).index('bookDue');
-      const range = IDBKeyRange.bound([bookId, 0], [bookId, Number(now)]);
-      return memoryRequest(index.getAll(range));
+      return reviewRepository.dueCardsForBook(bookId, now);
     }
 
     function settleWithin(promise, milliseconds) {
@@ -3947,11 +3933,7 @@ const output = `<!doctype html>
           parameterVersion: memoryParameterVersion
         };
         if (memoryStorageAvailable) {
-          const database = await openVocabularyDatabase();
-          const transaction = database.transaction([memoryCardStore, memoryLogStore], 'readwrite');
-          transaction.objectStore(memoryCardStore).put(afterRecord);
-          transaction.objectStore(memoryLogStore).put(logRecord);
-          await memoryTransactionDone(transaction);
+          await reviewRepository.saveReview(afterRecord, logRecord);
         } else {
           memoryVolatileCards.set(afterRecord.cardId, afterRecord);
           memoryVolatileLogs.set(logId, logRecord);
@@ -4009,13 +3991,7 @@ const output = `<!doctype html>
       const transition = animationCoordinator.begin('undo-returning', { mode: 'memory', direction: 'backward' });
       try {
         if (memoryStorageAvailable) {
-          const database = await openVocabularyDatabase();
-          const transaction = database.transaction([memoryCardStore, memoryLogStore], 'readwrite');
-          const cardStore = transaction.objectStore(memoryCardStore);
-          if (action.beforeRecord) cardStore.put(action.beforeRecord);
-          else cardStore.delete(action.afterRecord.cardId);
-          transaction.objectStore(memoryLogStore).delete(action.logId);
-          await memoryTransactionDone(transaction);
+          await reviewRepository.undoReview(action);
         } else {
           if (action.beforeRecord) memoryVolatileCards.set(action.beforeRecord.cardId, action.beforeRecord);
           else memoryVolatileCards.delete(action.afterRecord.cardId);
