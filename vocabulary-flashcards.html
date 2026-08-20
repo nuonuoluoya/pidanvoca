@@ -3648,6 +3648,191 @@ function parseWordbook(source, fileName = "wordbook.html") {
   },
 );
 </script>
+  <script>(function attachMemoryReviewController(root, factory) {
+  const session =
+    typeof module === "object" && module.exports
+      ? require("./review-session")
+      : root.PidanvocaMemoryReview;
+  const api = factory(session);
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaMemoryReview = Object.assign(
+      {},
+      root.PidanvocaMemoryReview || {},
+      api,
+    );
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createMemoryReviewControllerApi(session) {
+    "use strict";
+
+    class MemoryReviewController {
+      constructor() {
+        this.state = {
+          queue: [],
+          index: 0,
+          studyMode: "recall",
+          sessionId: "",
+          bookId: null,
+          dateKey: null,
+          reviewed: 0,
+          learnedNew: 0,
+          actionHistory: [],
+          ratingPending: false,
+          isOpen: false,
+        };
+      }
+
+      currentItem() {
+        return this.state.queue[this.state.index] || null;
+      }
+
+      canResume(bookId, dateKey) {
+        return this.state.bookId === bookId && this.state.dateKey === dateKey;
+      }
+
+      startSession(queue, options) {
+        this.state.queue = queue.slice();
+        this.state.index = 0;
+        this.state.sessionId = options.sessionId;
+        this.state.bookId = options.bookId;
+        this.state.dateKey = options.dateKey;
+        this.state.reviewed = 0;
+        this.state.learnedNew = 0;
+        this.state.actionHistory = [];
+        this.state.ratingPending = false;
+        return this.snapshot();
+      }
+
+      setOpen(isOpen) {
+        this.state.isOpen = Boolean(isOpen);
+      }
+
+      setStudyMode(mode) {
+        if (!["recall", "spelling"].includes(mode)) return false;
+        if (this.state.ratingPending || this.state.studyMode === mode)
+          return false;
+        this.state.studyMode = mode;
+        return true;
+      }
+
+      beginRating() {
+        if (this.state.ratingPending || !this.currentItem()) return false;
+        this.state.ratingPending = true;
+        return true;
+      }
+
+      beginUndo() {
+        if (this.state.ratingPending || !this.latestAction()) return false;
+        this.state.ratingPending = true;
+        return true;
+      }
+
+      finishRating() {
+        this.state.ratingPending = false;
+      }
+
+      applyRating(payload) {
+        if (!this.state.ratingPending) return null;
+        const item = this.currentItem();
+        if (!item) return null;
+        const update = session.applyRating(
+          {
+            index: this.state.index,
+            reviewed: this.state.reviewed,
+            learnedNew: this.state.learnedNew,
+          },
+          payload,
+        );
+        this.state.actionHistory.push(update.action);
+        this.state.index = update.index;
+        this.state.reviewed = update.reviewed;
+        this.state.learnedNew = update.learnedNew;
+        item.record = payload.afterRecord;
+        return update;
+      }
+
+      latestAction() {
+        return this.state.actionHistory.at(-1) || null;
+      }
+
+      applyUndo(action = this.latestAction()) {
+        if (!this.state.ratingPending || !action) return null;
+        if (this.latestAction() !== action) return null;
+        const restored = session.undoRating(
+          {
+            index: this.state.index,
+            reviewed: this.state.reviewed,
+            learnedNew: this.state.learnedNew,
+          },
+          action,
+        );
+        this.state.actionHistory.pop();
+        this.state.index = restored.index;
+        this.state.reviewed = restored.reviewed;
+        this.state.learnedNew = restored.learnedNew;
+        const item = this.currentItem();
+        if (item)
+          item.record = action.beforeRecord ? { ...action.beforeRecord } : null;
+        return restored;
+      }
+
+      clearHistory() {
+        this.state.actionHistory.length = 0;
+      }
+
+      invalidateSession(bookId = null) {
+        if (bookId && bookId !== this.state.bookId) return false;
+        this.clearHistory();
+        this.state.bookId = null;
+        this.state.dateKey = null;
+        return true;
+      }
+
+      snapshot() {
+        return Object.freeze({
+          ...this.state,
+          queue: this.state.queue.slice(),
+          actionHistory: this.state.actionHistory.slice(),
+        });
+      }
+
+      installLegacyBindings(target) {
+        const controller = this;
+        const propertyMap = {
+          memoryQueue: "queue",
+          memoryIndex: "index",
+          memoryStudyMode: "studyMode",
+          memorySessionId: "sessionId",
+          memorySessionBookId: "bookId",
+          memorySessionDateKey: "dateKey",
+          memorySessionReviewed: "reviewed",
+          memorySessionNew: "learnedNew",
+          memoryActionHistory: "actionHistory",
+          memoryRatingPending: "ratingPending",
+          memoryIsOpen: "isOpen",
+        };
+        Object.entries(propertyMap).forEach(([legacyName, stateName]) => {
+          Object.defineProperty(target, legacyName, {
+            configurable: true,
+            enumerable: false,
+            get: () => controller.state[stateName],
+            set: (value) => {
+              controller.state[stateName] = value;
+            },
+          });
+        });
+        return () => {
+          Object.keys(propertyMap).forEach((name) => delete target[name]);
+        };
+      }
+    }
+
+    return Object.freeze({ MemoryReviewController });
+  },
+);
+</script>
   <script>(function attachDatabase(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -6499,6 +6684,8 @@ function parseWordbook(source, fileName = "wordbook.html") {
 
     const classicDeckController = new window.PidanvocaClassicDeck.ClassicDeckController();
     classicDeckController.installLegacyBindings(window);
+    const memoryReviewController = new window.PidanvocaMemoryReview.MemoryReviewController();
+    memoryReviewController.installLegacyBindings(window);
     const legacyStudySizePreference = loadStudySizePreference();
     let studySizePreferences = loadStudySizePreferences();
     let studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
@@ -6514,26 +6701,15 @@ function parseWordbook(source, fileName = "wordbook.html") {
     let memoryStorageAvailable = true;
     const memoryVolatileCards = new Map();
     const memoryVolatileLogs = new Map();
-    let memoryIsOpen = false;
     let memoryModeLoading = false;
     let memoryClosing = false;
     let memoryBlockedShakeTimer = 0;
-    let memoryQueue = [];
-    let memoryIndex = 0;
     let memoryPreview = null;
     let memoryPreviewTime = null;
     let memoryRevealed = false;
-    let memoryStudyMode = 'recall';
     let memorySpellingWasWrong = false;
     let memorySpellingAccepted = false;
     let memorySpellingAdvanceTimer = 0;
-    let memorySessionId = '';
-    let memorySessionBookId = null;
-    let memorySessionDateKey = null;
-    let memorySessionReviewed = 0;
-    let memorySessionNew = 0;
-    const memoryActionHistory = [];
-    let memoryRatingPending = false;
     let memorySummaryToken = 0;
       const animationCoordinator = new window.PidanvocaAnimations.AnimationCoordinator(({ state }) => {
         deckStage.dataset.animationState = state;
@@ -6736,7 +6912,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     function memoryCurrentItem() {
-      return memoryQueue[memoryIndex] || null;
+      return memoryReviewController.currentItem();
     }
 
     function cancelMemorySpellingAdvance() {
@@ -6756,15 +6932,13 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     function clearMemoryActionHistory() {
-      memoryActionHistory.length = 0;
+      memoryReviewController.clearHistory();
       memoryUndoButton.disabled = true;
     }
 
     function invalidateMemorySessionHistory(bookId = null) {
-      if (bookId && bookId !== memorySessionBookId) return;
-      clearMemoryActionHistory();
-      memorySessionBookId = null;
-      memorySessionDateKey = null;
+      if (!memoryReviewController.invalidateSession(bookId)) return;
+      memoryUndoButton.disabled = true;
     }
 
     function syncMemoryUndoButton() {
@@ -6849,7 +7023,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     function setMemoryStudyMode(nextMode) {
       if (!['recall', 'spelling'].includes(nextMode) || nextMode === memoryStudyMode || memoryRatingPending || memorySpellingAccepted) return;
       cancelMemorySpellingAdvance();
-      memoryStudyMode = nextMode;
+      if (!memoryReviewController.setStudyMode(nextMode)) return;
       syncMemoryModeButton();
       if (memoryCurrentItem()) renderMemoryCard();
     }
@@ -7130,19 +7304,16 @@ function parseWordbook(source, fileName = "wordbook.html") {
         const bookId = activeMemoryBookId();
         if (!bookId) throw new Error('请先在“单词本”中选择一个具体词库。');
         const dateKey = memoryCore.localDateKey(new Date());
-        const canResume = memorySessionBookId === bookId && memorySessionDateKey === dateKey;
+        const canResume = memoryReviewController.canResume(bookId, dateKey);
         if (!canResume) {
           const built = await buildMemoryQueue();
-          memoryQueue = built.items;
-          memoryIndex = 0;
-          memorySessionId = memoryUuid();
-          memorySessionBookId = bookId;
-          memorySessionDateKey = dateKey;
-          memorySessionReviewed = 0;
-          memorySessionNew = 0;
-          clearMemoryActionHistory();
+          memoryReviewController.startSession(built.items, {
+            sessionId: memoryUuid(),
+            bookId,
+            dateKey
+          });
         }
-        memoryIsOpen = true;
+        memoryReviewController.setOpen(true);
         setSettingsOpen(false);
         closeStudyComplete();
         document.body.classList.add('memory-mode');
@@ -7167,7 +7338,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     function finishMemoryReviewClose(transition = null) {
       cancelMemorySpellingAdvance();
       memoryClosing = false;
-      memoryIsOpen = false;
+      memoryReviewController.setOpen(false);
       window.clearTimeout(memoryBlockedShakeTimer);
       memoryBlockedShakeTimer = 0;
       memoryPanel.classList.remove('is-good-blocked');
@@ -7236,7 +7407,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         if (rating === window.FSRS.Rating.Good && !memorySpellingAccepted) return;
       }
       cancelMemorySpellingAdvance();
-      memoryRatingPending = true;
+      if (!memoryReviewController.beginRating()) return;
       memoryAgainButton.disabled = true;
       memoryRevealButton.disabled = true;
       memoryGoodButton.disabled = true;
@@ -7278,21 +7449,13 @@ function parseWordbook(source, fileName = "wordbook.html") {
           memoryVolatileLogs.set(logId, logRecord);
         }
         const exitPoint = createExitPoint();
-        const sessionUpdate = window.PidanvocaMemoryReview.applyRating(
-          { index: memoryIndex, reviewed: memorySessionReviewed, learnedNew: memorySessionNew },
-          {
-            logId,
-            beforeRecord: item.record,
-            afterRecord,
-            wasNew: item.isNew,
-            exitPoint
-          }
-        );
-        memoryActionHistory.push(sessionUpdate.action);
-        memorySessionReviewed = sessionUpdate.reviewed;
-        memorySessionNew = sessionUpdate.learnedNew;
-        item.record = afterRecord;
-        memoryIndex = sessionUpdate.index;
+        memoryReviewController.applyRating({
+          logId,
+          beforeRecord: item.record,
+          afterRecord,
+          wasNew: item.isNew,
+          exitPoint
+        });
         if (transition.isActive()) {
           transition.move('exiting-current');
           await transitionMemoryCardAfterRating(exitPoint, rating === window.FSRS.Rating.Good, transition);
@@ -7312,7 +7475,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         showImportStatus(error instanceof Error ? error.message : '学习进度未保存，请重试。', true);
       } finally {
         if (transition.isActive()) transition.cancel('rating-finished-without-settling');
-        memoryRatingPending = false;
+        memoryReviewController.finishRating();
         memoryRevealButton.disabled = !memoryCurrentItem();
         syncMemoryRatingButtons();
         syncMemoryUndoButton();
@@ -7322,7 +7485,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     async function undoMemoryRating() {
       const action = memoryActionHistory.at(-1);
       if (!action || memoryRatingPending || !animationCoordinator.isIdle) return;
-      memoryRatingPending = true;
+      if (!memoryReviewController.beginUndo()) return;
       memoryUndoButton.disabled = true;
       memoryAgainButton.disabled = true;
       memoryRevealButton.disabled = true;
@@ -7339,22 +7502,13 @@ function parseWordbook(source, fileName = "wordbook.html") {
       } catch {
         transition.cancel('undo-save-failed');
         showImportStatus('撤销失败，原评分仍然保留。', true);
-        memoryRatingPending = false;
+        memoryReviewController.finishRating();
         syncMemoryRatingButtons();
         syncMemoryUndoButton();
         return;
       }
 
-      memoryActionHistory.pop();
-      const restoredSession = window.PidanvocaMemoryReview.undoRating(
-        { index: memoryIndex, reviewed: memorySessionReviewed, learnedNew: memorySessionNew },
-        action
-      );
-      memoryIndex = restoredSession.index;
-      memorySessionReviewed = restoredSession.reviewed;
-      memorySessionNew = restoredSession.learnedNew;
-      const item = memoryQueue[memoryIndex];
-      if (item) item.record = action.beforeRecord ? { ...action.beforeRecord } : null;
+      memoryReviewController.applyUndo(action);
       try {
         if (transition.isActive()) await transitionMemoryCardAfterUndo(action.exitPoint, transition);
         else renderMemoryCard(false);
@@ -7363,7 +7517,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         renderMemoryCard(false);
       } finally {
         if (transition.isActive()) transition.cancel('undo-finished-without-settling');
-        memoryRatingPending = false;
+        memoryReviewController.finishRating();
         memoryRevealButton.disabled = !memoryCurrentItem();
         syncMemoryRatingButtons();
         syncMemoryUndoButton();

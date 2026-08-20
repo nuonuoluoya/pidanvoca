@@ -14,6 +14,7 @@ const wordbookParserPath = path.join(__dirname, 'src', 'features', 'wordbooks', 
 const classicDeckModelPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'model.js');
 const classicDeckControllerPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'controller.js');
 const reviewSessionPath = path.join(__dirname, 'src', 'features', 'memory-review', 'review-session.js');
+const memoryReviewControllerPath = path.join(__dirname, 'src', 'features', 'memory-review', 'controller.js');
 const databaseModulePath = path.join(__dirname, 'src', 'services', 'storage', 'database.js');
 const reviewRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'review-repository.js');
 const wordbookRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'wordbook-repository.js');
@@ -102,6 +103,7 @@ const embeddedWordbookParser = fs.readFileSync(wordbookParserPath, 'utf8').repla
 const embeddedClassicDeckModel = fs.readFileSync(classicDeckModelPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedClassicDeckController = fs.readFileSync(classicDeckControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedReviewSession = fs.readFileSync(reviewSessionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedMemoryReviewController = fs.readFileSync(memoryReviewControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedDatabaseModule = fs.readFileSync(databaseModulePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedReviewRepository = fs.readFileSync(reviewRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedWordbookRepository = fs.readFileSync(wordbookRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
@@ -2793,6 +2795,7 @@ const output = `<!doctype html>
   <script>${embeddedClassicDeckModel}</script>
   <script>${embeddedClassicDeckController}</script>
   <script>${embeddedReviewSession}</script>
+  <script>${embeddedMemoryReviewController}</script>
   <script>${embeddedDatabaseModule}</script>
   <script>${embeddedReviewRepository}</script>
   <script>${embeddedWordbookRepository}</script>
@@ -3138,6 +3141,8 @@ const output = `<!doctype html>
 
     const classicDeckController = new window.PidanvocaClassicDeck.ClassicDeckController();
     classicDeckController.installLegacyBindings(window);
+    const memoryReviewController = new window.PidanvocaMemoryReview.MemoryReviewController();
+    memoryReviewController.installLegacyBindings(window);
     const legacyStudySizePreference = loadStudySizePreference();
     let studySizePreferences = loadStudySizePreferences();
     let studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
@@ -3153,26 +3158,15 @@ const output = `<!doctype html>
     let memoryStorageAvailable = true;
     const memoryVolatileCards = new Map();
     const memoryVolatileLogs = new Map();
-    let memoryIsOpen = false;
     let memoryModeLoading = false;
     let memoryClosing = false;
     let memoryBlockedShakeTimer = 0;
-    let memoryQueue = [];
-    let memoryIndex = 0;
     let memoryPreview = null;
     let memoryPreviewTime = null;
     let memoryRevealed = false;
-    let memoryStudyMode = 'recall';
     let memorySpellingWasWrong = false;
     let memorySpellingAccepted = false;
     let memorySpellingAdvanceTimer = 0;
-    let memorySessionId = '';
-    let memorySessionBookId = null;
-    let memorySessionDateKey = null;
-    let memorySessionReviewed = 0;
-    let memorySessionNew = 0;
-    const memoryActionHistory = [];
-    let memoryRatingPending = false;
     let memorySummaryToken = 0;
       const animationCoordinator = new window.PidanvocaAnimations.AnimationCoordinator(({ state }) => {
         deckStage.dataset.animationState = state;
@@ -3375,7 +3369,7 @@ const output = `<!doctype html>
     }
 
     function memoryCurrentItem() {
-      return memoryQueue[memoryIndex] || null;
+      return memoryReviewController.currentItem();
     }
 
     function cancelMemorySpellingAdvance() {
@@ -3395,15 +3389,13 @@ const output = `<!doctype html>
     }
 
     function clearMemoryActionHistory() {
-      memoryActionHistory.length = 0;
+      memoryReviewController.clearHistory();
       memoryUndoButton.disabled = true;
     }
 
     function invalidateMemorySessionHistory(bookId = null) {
-      if (bookId && bookId !== memorySessionBookId) return;
-      clearMemoryActionHistory();
-      memorySessionBookId = null;
-      memorySessionDateKey = null;
+      if (!memoryReviewController.invalidateSession(bookId)) return;
+      memoryUndoButton.disabled = true;
     }
 
     function syncMemoryUndoButton() {
@@ -3488,7 +3480,7 @@ const output = `<!doctype html>
     function setMemoryStudyMode(nextMode) {
       if (!['recall', 'spelling'].includes(nextMode) || nextMode === memoryStudyMode || memoryRatingPending || memorySpellingAccepted) return;
       cancelMemorySpellingAdvance();
-      memoryStudyMode = nextMode;
+      if (!memoryReviewController.setStudyMode(nextMode)) return;
       syncMemoryModeButton();
       if (memoryCurrentItem()) renderMemoryCard();
     }
@@ -3769,19 +3761,16 @@ const output = `<!doctype html>
         const bookId = activeMemoryBookId();
         if (!bookId) throw new Error('请先在“单词本”中选择一个具体词库。');
         const dateKey = memoryCore.localDateKey(new Date());
-        const canResume = memorySessionBookId === bookId && memorySessionDateKey === dateKey;
+        const canResume = memoryReviewController.canResume(bookId, dateKey);
         if (!canResume) {
           const built = await buildMemoryQueue();
-          memoryQueue = built.items;
-          memoryIndex = 0;
-          memorySessionId = memoryUuid();
-          memorySessionBookId = bookId;
-          memorySessionDateKey = dateKey;
-          memorySessionReviewed = 0;
-          memorySessionNew = 0;
-          clearMemoryActionHistory();
+          memoryReviewController.startSession(built.items, {
+            sessionId: memoryUuid(),
+            bookId,
+            dateKey
+          });
         }
-        memoryIsOpen = true;
+        memoryReviewController.setOpen(true);
         setSettingsOpen(false);
         closeStudyComplete();
         document.body.classList.add('memory-mode');
@@ -3806,7 +3795,7 @@ const output = `<!doctype html>
     function finishMemoryReviewClose(transition = null) {
       cancelMemorySpellingAdvance();
       memoryClosing = false;
-      memoryIsOpen = false;
+      memoryReviewController.setOpen(false);
       window.clearTimeout(memoryBlockedShakeTimer);
       memoryBlockedShakeTimer = 0;
       memoryPanel.classList.remove('is-good-blocked');
@@ -3875,7 +3864,7 @@ const output = `<!doctype html>
         if (rating === window.FSRS.Rating.Good && !memorySpellingAccepted) return;
       }
       cancelMemorySpellingAdvance();
-      memoryRatingPending = true;
+      if (!memoryReviewController.beginRating()) return;
       memoryAgainButton.disabled = true;
       memoryRevealButton.disabled = true;
       memoryGoodButton.disabled = true;
@@ -3917,21 +3906,13 @@ const output = `<!doctype html>
           memoryVolatileLogs.set(logId, logRecord);
         }
         const exitPoint = createExitPoint();
-        const sessionUpdate = window.PidanvocaMemoryReview.applyRating(
-          { index: memoryIndex, reviewed: memorySessionReviewed, learnedNew: memorySessionNew },
-          {
-            logId,
-            beforeRecord: item.record,
-            afterRecord,
-            wasNew: item.isNew,
-            exitPoint
-          }
-        );
-        memoryActionHistory.push(sessionUpdate.action);
-        memorySessionReviewed = sessionUpdate.reviewed;
-        memorySessionNew = sessionUpdate.learnedNew;
-        item.record = afterRecord;
-        memoryIndex = sessionUpdate.index;
+        memoryReviewController.applyRating({
+          logId,
+          beforeRecord: item.record,
+          afterRecord,
+          wasNew: item.isNew,
+          exitPoint
+        });
         if (transition.isActive()) {
           transition.move('exiting-current');
           await transitionMemoryCardAfterRating(exitPoint, rating === window.FSRS.Rating.Good, transition);
@@ -3951,7 +3932,7 @@ const output = `<!doctype html>
         showImportStatus(error instanceof Error ? error.message : '学习进度未保存，请重试。', true);
       } finally {
         if (transition.isActive()) transition.cancel('rating-finished-without-settling');
-        memoryRatingPending = false;
+        memoryReviewController.finishRating();
         memoryRevealButton.disabled = !memoryCurrentItem();
         syncMemoryRatingButtons();
         syncMemoryUndoButton();
@@ -3961,7 +3942,7 @@ const output = `<!doctype html>
     async function undoMemoryRating() {
       const action = memoryActionHistory.at(-1);
       if (!action || memoryRatingPending || !animationCoordinator.isIdle) return;
-      memoryRatingPending = true;
+      if (!memoryReviewController.beginUndo()) return;
       memoryUndoButton.disabled = true;
       memoryAgainButton.disabled = true;
       memoryRevealButton.disabled = true;
@@ -3978,22 +3959,13 @@ const output = `<!doctype html>
       } catch {
         transition.cancel('undo-save-failed');
         showImportStatus('撤销失败，原评分仍然保留。', true);
-        memoryRatingPending = false;
+        memoryReviewController.finishRating();
         syncMemoryRatingButtons();
         syncMemoryUndoButton();
         return;
       }
 
-      memoryActionHistory.pop();
-      const restoredSession = window.PidanvocaMemoryReview.undoRating(
-        { index: memoryIndex, reviewed: memorySessionReviewed, learnedNew: memorySessionNew },
-        action
-      );
-      memoryIndex = restoredSession.index;
-      memorySessionReviewed = restoredSession.reviewed;
-      memorySessionNew = restoredSession.learnedNew;
-      const item = memoryQueue[memoryIndex];
-      if (item) item.record = action.beforeRecord ? { ...action.beforeRecord } : null;
+      memoryReviewController.applyUndo(action);
       try {
         if (transition.isActive()) await transitionMemoryCardAfterUndo(action.exitPoint, transition);
         else renderMemoryCard(false);
@@ -4002,7 +3974,7 @@ const output = `<!doctype html>
         renderMemoryCard(false);
       } finally {
         if (transition.isActive()) transition.cancel('undo-finished-without-settling');
-        memoryRatingPending = false;
+        memoryReviewController.finishRating();
         memoryRevealButton.disabled = !memoryCurrentItem();
         syncMemoryRatingButtons();
         syncMemoryUndoButton();
