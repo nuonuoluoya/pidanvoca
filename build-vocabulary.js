@@ -97,6 +97,13 @@ const databaseModulePath = path.join(
   "storage",
   "database.js",
 );
+const storageAvailabilityPath = path.join(
+  __dirname,
+  "src",
+  "services",
+  "storage",
+  "availability.js",
+);
 const storageMigrationV1Path = path.join(
   __dirname,
   "src",
@@ -375,6 +382,10 @@ const embeddedMemoryRefreshPolicy = fs
   .replace(/<\/script/gi, "<\\/script");
 const embeddedDatabaseModule = fs
   .readFileSync(databaseModulePath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedStorageAvailability = fs
+  .readFileSync(storageAvailabilityPath, "utf8")
   .replace(/[ \t]+$/gm, "")
   .replace(/<\/script/gi, "<\\/script");
 const embeddedStorageMigrationV1 = fs
@@ -3111,6 +3122,7 @@ const output = `<!doctype html>
   <script>${embeddedReviewSession}</script>
   <script>${embeddedMemoryReviewController}</script>
   <script>${embeddedMemoryRefreshPolicy}</script>
+  <script>${embeddedStorageAvailability}</script>
   <script>${embeddedStorageMigrationV1}</script>
   <script>${embeddedStorageMigrationV2}</script>
   <script>${embeddedDatabaseModule}</script>
@@ -3156,7 +3168,13 @@ const output = `<!doctype html>
     const vocabularyDatabase = window.PidanvocaStorage.createDatabaseClient({
       indexedDB: window.indexedDB,
       name: vocabularyDatabaseName,
-      version: vocabularyDatabaseVersion
+      version: vocabularyDatabaseVersion,
+      onStateChange: ({ state }) => {
+        if (state === 'persistent') memoryStorageAvailable = true;
+        if (state === 'temporarily-unavailable' || state === 'corrupted') memoryStorageAvailable = false;
+      },
+      onBlocked: () => showImportStatus('数据库升级正被另一个旧页面占用，请关闭其他单词本标签页后重试。', true, true),
+      onVersionChange: () => showImportStatus('检测到新版本数据库，当前连接已安全关闭；下次操作会自动重连。', false, true)
     });
     const reviewRepository = window.PidanvocaStorage.createReviewRepository({
       databaseClient: vocabularyDatabase,
@@ -3514,6 +3532,7 @@ const output = `<!doctype html>
     let studyCompleteTimer = 0;
     let memoryDailyNew = memoryCore.defaultDailyNew;
     let memoryStorageAvailable = true;
+    let memoryVolatileConsent = false;
     const memoryVolatileCards = new Map();
     const memoryVolatileLogs = new Map();
     let memoryModeLoading = false;
@@ -3551,6 +3570,15 @@ const output = `<!doctype html>
     function memoryUuid() {
       if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
       return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    }
+
+    function ensureVolatileMemoryConsent() {
+      if (memoryStorageAvailable || memoryVolatileConsent) return true;
+      const consent = window.confirm('当前浏览器暂时无法保存记忆曲线进度。\\n\\n是否继续使用临时会话？本次评分会在关闭页面后丢失。');
+      if (!consent) return false;
+      memoryVolatileConsent = vocabularyDatabase.useVolatileWithUserConsent(true);
+      if (memoryVolatileConsent) showImportStatus('已进入临时记忆会话；关闭页面前可导出备份。', true, true);
+      return memoryVolatileConsent;
     }
 
     function memoryWordMap() {
@@ -4151,6 +4179,7 @@ const output = `<!doctype html>
       try {
         const bookId = activeMemoryBookId();
         if (!bookId) throw new Error('请先在“单词本”中选择一个具体词库。');
+        if (!ensureVolatileMemoryConsent()) throw new Error('已取消临时记忆会话。');
         const dateKey = memoryCore.localDateKey(new Date());
         const canResume = memoryReviewController.canResume(bookId, dateKey);
         if (!canResume) {
@@ -4251,6 +4280,7 @@ const output = `<!doctype html>
     async function rateMemoryCard(rating) {
       const item = memoryCurrentItem();
       if (!item || !memoryPreview || memoryRatingPending || !animationCoordinator.isIdle || (rating !== window.FSRS.Rating.Again && rating !== window.FSRS.Rating.Good)) return;
+      if (!ensureVolatileMemoryConsent()) return;
       if (memoryStudyMode === 'spelling') {
         if (rating === window.FSRS.Rating.Good && !memorySpellingAccepted) return;
       }

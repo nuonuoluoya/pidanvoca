@@ -116,3 +116,27 @@ test("迁移按版本边界执行且重复校验不会破坏现有索引", async
   await transactionDone(transaction);
   await client.close();
 });
+
+test("数据库打开遇到瞬时错误时只重试一次并恢复", async () => {
+  let attempts = 0;
+  const flakyIndexedDatabase = {
+    open(...args) {
+      attempts += 1;
+      if (attempts === 1) {
+        const error = new Error("temporary open failure");
+        error.name = "UnknownError";
+        throw error;
+      }
+      return indexedDB.open(...args);
+    },
+  };
+  const client = createDatabaseClient({
+    indexedDB: flakyIndexedDatabase,
+    name: databaseName("retry-open"),
+  });
+  const database = await client.open();
+  assert.equal(attempts, 2);
+  assert.equal(client.storageState, "persistent");
+  assert.equal(database.objectStoreNames.contains("reviewCards"), true);
+  await client.close();
+});

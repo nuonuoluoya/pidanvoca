@@ -4203,6 +4203,105 @@ function parseWordbook(source, fileName = "wordbook.html") {
   },
 );
 </script>
+  <script>(function attachStorageAvailability(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaStorage = Object.assign({}, root.PidanvocaStorage || {}, api);
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createStorageAvailabilityApi() {
+    "use strict";
+
+    const storageStates = Object.freeze({
+      persistent: "persistent",
+      retrying: "retrying",
+      temporarilyUnavailable: "temporarily-unavailable",
+      volatileWithUserConsent: "volatile-with-user-consent",
+      corrupted: "corrupted",
+    });
+
+    const retryableErrorNames = new Set([
+      "AbortError",
+      "InvalidStateError",
+      "NotReadableError",
+      "TimeoutError",
+      "TransactionInactiveError",
+      "UnknownError",
+    ]);
+
+    function defaultRetryable(error) {
+      return retryableErrorNames.has(error?.name);
+    }
+
+    function createStorageRecoveryController({
+      maxAttempts = 2,
+      retryDelay = () => Promise.resolve(),
+      isRetryable = defaultRetryable,
+      onStateChange = () => {},
+    } = {}) {
+      const attempts = Math.max(1, Math.trunc(Number(maxAttempts)) || 1);
+      let state = storageStates.persistent;
+      let lastError = null;
+
+      function transition(nextState, error = null) {
+        state = nextState;
+        lastError = error;
+        onStateChange({ state, error });
+      }
+
+      async function run(operation, { beforeRetry = () => {} } = {}) {
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+          try {
+            const result = await operation(attempt);
+            transition(storageStates.persistent);
+            return result;
+          } catch (error) {
+            const canRetry = attempt < attempts && isRetryable(error);
+            if (!canRetry) {
+              transition(storageStates.temporarilyUnavailable, error);
+              throw error;
+            }
+            transition(storageStates.retrying, error);
+            await beforeRetry(error, attempt);
+            await retryDelay(attempt);
+          }
+        }
+        throw new Error("Storage retry loop exhausted");
+      }
+
+      function useVolatileWithUserConsent(consent) {
+        if (consent !== true) return false;
+        transition(storageStates.volatileWithUserConsent, lastError);
+        return true;
+      }
+
+      function markCorrupted(error) {
+        transition(storageStates.corrupted, error);
+      }
+
+      return Object.freeze({
+        run,
+        useVolatileWithUserConsent,
+        markCorrupted,
+        get state() {
+          return state;
+        },
+        get lastError() {
+          return lastError;
+        },
+      });
+    }
+
+    return Object.freeze({
+      storageStates,
+      defaultRetryable,
+      createStorageRecoveryController,
+    });
+  },
+);
+</script>
   <script>(function attachStorageMigrationV1(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -4273,22 +4372,27 @@ function parseWordbook(source, fileName = "wordbook.html") {
 );
 </script>
   <script>(function attachDatabase(root, factory) {
-  const migrationApi =
+  const dependencyApi =
     typeof module === "object" && module.exports
       ? Object.assign(
           {},
+          require("./availability"),
           require("./migrations/v1"),
           require("./migrations/v2"),
         )
-      : root?.PidanvocaStorageMigrations;
-  const api = factory(migrationApi);
+      : Object.assign(
+          {},
+          root?.PidanvocaStorage,
+          root?.PidanvocaStorageMigrations,
+        );
+  const api = factory(dependencyApi);
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) {
     root.PidanvocaStorage = Object.assign({}, root.PidanvocaStorage || {}, api);
   }
 })(
   typeof globalThis !== "undefined" ? globalThis : this,
-  function createDatabaseApi(migrations) {
+  function createDatabaseApi(dependencies) {
     "use strict";
 
     const schema = Object.freeze({
@@ -4324,8 +4428,8 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     const migrationSteps = Object.freeze([
-      { version: 1, run: migrations?.migrateToV1 },
-      { version: 2, run: migrations?.migrateToV2 },
+      { version: 1, run: dependencies?.migrateToV1 },
+      { version: 2, run: dependencies?.migrateToV2 },
     ]);
 
     function upgradeSchema(
@@ -4348,10 +4452,16 @@ function parseWordbook(source, fileName = "wordbook.html") {
       indexedDB,
       name = "random-vocabulary",
       version = schema.version,
+      onStateChange,
+      onBlocked = () => {},
+      onVersionChange = () => {},
     }) {
       let openPromise = null;
+      const recovery = dependencies.createStorageRecoveryController({
+        onStateChange,
+      });
 
-      function open() {
+      function openOnce() {
         if (!indexedDB)
           return Promise.reject(new Error("IndexedDB unavailable"));
         if (openPromise) return openPromise;
@@ -4370,6 +4480,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
             database.onversionchange = () => {
               database.close();
               openPromise = null;
+              onVersionChange();
             };
             resolve(database);
           };
@@ -4379,30 +4490,44 @@ function parseWordbook(source, fileName = "wordbook.html") {
           };
           request.onblocked = () => {
             openPromise = null;
-            reject(new Error("IndexedDB upgrade blocked"));
+            const error = new Error("IndexedDB upgrade blocked");
+            error.name = "BlockedError";
+            onBlocked(error);
+            reject(error);
           };
         });
         return openPromise;
       }
 
-      async function runTransaction(storeNames, mode, operation) {
-        const database = await open();
-        const transaction = database.transaction(storeNames, mode);
-        const completed = transactionDone(transaction);
-        let result;
-        try {
-          result = await operation(transaction);
-        } catch (error) {
-          try {
-            transaction.abort();
-          } catch {
-            // The transaction may already be inactive after a request failure.
-          }
-          await completed.catch(() => {});
-          throw error;
-        }
-        await completed;
-        return result;
+      function open() {
+        return recovery.run(openOnce, { beforeRetry: close });
+      }
+
+      function runTransaction(storeNames, mode, operation) {
+        return recovery.run(
+          async () => {
+            const database = await openOnce();
+            const transaction = database.transaction(storeNames, mode);
+            const completed = transactionDone(transaction);
+            let result;
+            try {
+              result = await operation(transaction);
+            } catch (error) {
+              try {
+                transaction.abort();
+              } catch {
+                // The transaction may already be inactive after a request failure.
+              }
+              await completed.catch(() => {});
+              throw error;
+            }
+            await completed;
+            return result;
+          },
+          {
+            beforeRetry: close,
+          },
+        );
       }
 
       async function close() {
@@ -4412,7 +4537,19 @@ function parseWordbook(source, fileName = "wordbook.html") {
         openPromise = null;
       }
 
-      return Object.freeze({ open, runTransaction, close });
+      return Object.freeze({
+        open,
+        runTransaction,
+        close,
+        useVolatileWithUserConsent: recovery.useVolatileWithUserConsent,
+        markCorrupted: recovery.markCorrupted,
+        get storageState() {
+          return recovery.state;
+        },
+        get storageError() {
+          return recovery.lastError;
+        },
+      });
     }
 
     return Object.freeze({
@@ -7077,7 +7214,13 @@ function parseWordbook(source, fileName = "wordbook.html") {
     const vocabularyDatabase = window.PidanvocaStorage.createDatabaseClient({
       indexedDB: window.indexedDB,
       name: vocabularyDatabaseName,
-      version: vocabularyDatabaseVersion
+      version: vocabularyDatabaseVersion,
+      onStateChange: ({ state }) => {
+        if (state === 'persistent') memoryStorageAvailable = true;
+        if (state === 'temporarily-unavailable' || state === 'corrupted') memoryStorageAvailable = false;
+      },
+      onBlocked: () => showImportStatus('数据库升级正被另一个旧页面占用，请关闭其他单词本标签页后重试。', true, true),
+      onVersionChange: () => showImportStatus('检测到新版本数据库，当前连接已安全关闭；下次操作会自动重连。', false, true)
     });
     const reviewRepository = window.PidanvocaStorage.createReviewRepository({
       databaseClient: vocabularyDatabase,
@@ -7435,6 +7578,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     let studyCompleteTimer = 0;
     let memoryDailyNew = memoryCore.defaultDailyNew;
     let memoryStorageAvailable = true;
+    let memoryVolatileConsent = false;
     const memoryVolatileCards = new Map();
     const memoryVolatileLogs = new Map();
     let memoryModeLoading = false;
@@ -7472,6 +7616,15 @@ function parseWordbook(source, fileName = "wordbook.html") {
     function memoryUuid() {
       if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
       return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    }
+
+    function ensureVolatileMemoryConsent() {
+      if (memoryStorageAvailable || memoryVolatileConsent) return true;
+      const consent = window.confirm('当前浏览器暂时无法保存记忆曲线进度。\n\n是否继续使用临时会话？本次评分会在关闭页面后丢失。');
+      if (!consent) return false;
+      memoryVolatileConsent = vocabularyDatabase.useVolatileWithUserConsent(true);
+      if (memoryVolatileConsent) showImportStatus('已进入临时记忆会话；关闭页面前可导出备份。', true, true);
+      return memoryVolatileConsent;
     }
 
     function memoryWordMap() {
@@ -8072,6 +8225,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
       try {
         const bookId = activeMemoryBookId();
         if (!bookId) throw new Error('请先在“单词本”中选择一个具体词库。');
+        if (!ensureVolatileMemoryConsent()) throw new Error('已取消临时记忆会话。');
         const dateKey = memoryCore.localDateKey(new Date());
         const canResume = memoryReviewController.canResume(bookId, dateKey);
         if (!canResume) {
@@ -8172,6 +8326,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     async function rateMemoryCard(rating) {
       const item = memoryCurrentItem();
       if (!item || !memoryPreview || memoryRatingPending || !animationCoordinator.isIdle || (rating !== window.FSRS.Rating.Again && rating !== window.FSRS.Rating.Good)) return;
+      if (!ensureVolatileMemoryConsent()) return;
       if (memoryStudyMode === 'spelling') {
         if (rating === window.FSRS.Rating.Good && !memorySpellingAccepted) return;
       }

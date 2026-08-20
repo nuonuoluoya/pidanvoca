@@ -1,20 +1,25 @@
 (function attachDatabase(root, factory) {
-  const migrationApi =
+  const dependencyApi =
     typeof module === "object" && module.exports
       ? Object.assign(
           {},
+          require("./availability"),
           require("./migrations/v1"),
           require("./migrations/v2"),
         )
-      : root?.PidanvocaStorageMigrations;
-  const api = factory(migrationApi);
+      : Object.assign(
+          {},
+          root?.PidanvocaStorage,
+          root?.PidanvocaStorageMigrations,
+        );
+  const api = factory(dependencyApi);
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) {
     root.PidanvocaStorage = Object.assign({}, root.PidanvocaStorage || {}, api);
   }
 })(
   typeof globalThis !== "undefined" ? globalThis : this,
-  function createDatabaseApi(migrations) {
+  function createDatabaseApi(dependencies) {
     "use strict";
 
     const schema = Object.freeze({
@@ -50,8 +55,8 @@
     }
 
     const migrationSteps = Object.freeze([
-      { version: 1, run: migrations?.migrateToV1 },
-      { version: 2, run: migrations?.migrateToV2 },
+      { version: 1, run: dependencies?.migrateToV1 },
+      { version: 2, run: dependencies?.migrateToV2 },
     ]);
 
     function upgradeSchema(
@@ -74,10 +79,16 @@
       indexedDB,
       name = "random-vocabulary",
       version = schema.version,
+      onStateChange,
+      onBlocked = () => {},
+      onVersionChange = () => {},
     }) {
       let openPromise = null;
+      const recovery = dependencies.createStorageRecoveryController({
+        onStateChange,
+      });
 
-      function open() {
+      function openOnce() {
         if (!indexedDB)
           return Promise.reject(new Error("IndexedDB unavailable"));
         if (openPromise) return openPromise;
@@ -96,6 +107,7 @@
             database.onversionchange = () => {
               database.close();
               openPromise = null;
+              onVersionChange();
             };
             resolve(database);
           };
@@ -105,30 +117,44 @@
           };
           request.onblocked = () => {
             openPromise = null;
-            reject(new Error("IndexedDB upgrade blocked"));
+            const error = new Error("IndexedDB upgrade blocked");
+            error.name = "BlockedError";
+            onBlocked(error);
+            reject(error);
           };
         });
         return openPromise;
       }
 
-      async function runTransaction(storeNames, mode, operation) {
-        const database = await open();
-        const transaction = database.transaction(storeNames, mode);
-        const completed = transactionDone(transaction);
-        let result;
-        try {
-          result = await operation(transaction);
-        } catch (error) {
-          try {
-            transaction.abort();
-          } catch {
-            // The transaction may already be inactive after a request failure.
-          }
-          await completed.catch(() => {});
-          throw error;
-        }
-        await completed;
-        return result;
+      function open() {
+        return recovery.run(openOnce, { beforeRetry: close });
+      }
+
+      function runTransaction(storeNames, mode, operation) {
+        return recovery.run(
+          async () => {
+            const database = await openOnce();
+            const transaction = database.transaction(storeNames, mode);
+            const completed = transactionDone(transaction);
+            let result;
+            try {
+              result = await operation(transaction);
+            } catch (error) {
+              try {
+                transaction.abort();
+              } catch {
+                // The transaction may already be inactive after a request failure.
+              }
+              await completed.catch(() => {});
+              throw error;
+            }
+            await completed;
+            return result;
+          },
+          {
+            beforeRetry: close,
+          },
+        );
       }
 
       async function close() {
@@ -138,7 +164,19 @@
         openPromise = null;
       }
 
-      return Object.freeze({ open, runTransaction, close });
+      return Object.freeze({
+        open,
+        runTransaction,
+        close,
+        useVolatileWithUserConsent: recovery.useVolatileWithUserConsent,
+        markCorrupted: recovery.markCorrupted,
+        get storageState() {
+          return recovery.state;
+        },
+        get storageError() {
+          return recovery.lastError;
+        },
+      });
     }
 
     return Object.freeze({
