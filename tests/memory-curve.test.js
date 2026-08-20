@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const Core = require("../memory-curve-core");
+const Core = require("../src/features/memory-review/core");
 const FSRS = require("ts-fsrs");
 
 test("规范化单词键保留实际标点并统一空白和大小写", () => {

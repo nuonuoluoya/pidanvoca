@@ -2,9 +2,9 @@
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) {
-    root.PidanvocaClassicDeck = Object.assign(
+    /** @type {any} */ (root).PidanvocaClassicDeck = Object.assign(
       {},
-      root.PidanvocaClassicDeck || {},
+      /** @type {any} */ (root).PidanvocaClassicDeck || {},
       api,
     );
   }
@@ -13,6 +13,9 @@
   function createClassicDeckModel() {
     "use strict";
 
+    /** @typedef {{start: number, end: number, requestedSize: number}} StudyGroup */
+
+    /** @param {unknown} value */
     function normalizeSpelling(value) {
       return String(value)
         .trim()
@@ -20,6 +23,10 @@
         .replace(/\s+/g, " ");
     }
 
+    /**
+     * @param {number} length
+     * @param {(maximum: number) => number} randomIndex
+     */
     function createShuffledDeck(length, randomIndex) {
       const size = Math.max(0, Math.floor(Number(length) || 0));
       const deck = Array.from({ length: size }, (_, index) => index);
@@ -39,6 +46,12 @@
       return deck;
     }
 
+    /**
+     * @param {number} total
+     * @param {number} start
+     * @param {number} requestedSize
+     * @returns {Readonly<StudyGroup>}
+     */
     function createStudyGroup(total, start, requestedSize) {
       const safeTotal = Math.max(0, Math.floor(Number(total) || 0));
       const safeStart = Math.min(
@@ -56,6 +69,12 @@
       return Object.freeze({ start: safeStart, end, requestedSize });
     }
 
+    /**
+     * @param {StudyGroup[]} groups
+     * @param {number} currentGroupIndex
+     * @param {number} position
+     * @returns {StudyGroup | null}
+     */
     function studyGroupForPosition(groups, currentGroupIndex, position) {
       return (
         groups.find(
@@ -66,6 +85,12 @@
       );
     }
 
+    /**
+     * @param {number} totalEntries
+     * @param {StudyGroup[]} groups
+     * @param {number} currentGroupIndex
+     * @param {number} position
+     */
     function studyProgress(totalEntries, groups, currentGroupIndex, position) {
       const group = studyGroupForPosition(
         groups,

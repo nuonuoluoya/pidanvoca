@@ -163,6 +163,7 @@ npm run perf:check
 - `npm run check`：依次运行 ESLint、格式检查、JavaScript 类型检查、Node 测试和可复现构建。
 - `npm run test:e2e`：在桌面和移动端 Chromium 中验证经典模式、记忆模式、设置、导入、动画、在线按需加载及 `file://` 离线启动。
 - `npm run perf:check`：检查在线/离线产物体积，并以固定数据验证 20,000 词洗牌与 50,000 词导入合并没有明显性能退化；预算记录在 `performance-budgets.json`。
+- `npm run release:check`：在干净工作区运行全部质量、性能、浏览器与生成文件发布门禁。
 - `npm run build`：从同一套源码生成 `dist/web/index.html` 在线壳、`data/books.manifest.json` 与 JSON 词库、`dist/offline/vocabulary-flashcards.html`，并同步根目录离线文件。
 - 默认构建不会读取 `wordbooks/my/`，避免将私人词书写入生成文件。
 - 如确实需要把 `wordbooks/my/` 中的 HTML 词书嵌入构建结果，可在构建进程中设置 `INCLUDE_PERSONAL_WORDBOOKS=1`。生成文件将包含私人数据，提交或分享前请检查内容。
@@ -180,7 +181,6 @@ npm run perf:check
 │  ├─ web/index.html            # GitHub Pages 在线应用壳
 │  └─ offline/*.html            # 可下载的自包含离线版
 ├─ build-vocabulary.js          # 在线/离线双产物生成器
-├─ memory-curve-core.js         # 可独立测试的记忆曲线纯逻辑
 ├─ src/                         # 控制器、动画、存储和应用边界模块
 ├─ package.json                 # 构建、测试脚本和固定依赖
 ├─ package-lock.json            # npm 锁文件
@@ -191,6 +191,8 @@ npm run perf:check
 └─ design-concepts/
    └─ childlike-ui/             # 童趣主题的设计参考和截图
 ```
+
+模块职责与状态所有权见 [`docs/architecture.md`](./docs/architecture.md)，完整发布和回滚步骤见 [`docs/release-and-rollback.md`](./docs/release-and-rollback.md)。
 
 ## 浏览器说明
 

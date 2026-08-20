@@ -22,7 +22,13 @@ const offlineOutputPath = path.join(
   "offline",
   "vocabulary-flashcards.html",
 );
-const memoryCorePath = path.join(__dirname, "memory-curve-core.js");
+const memoryCorePath = path.join(
+  __dirname,
+  "src",
+  "features",
+  "memory-review",
+  "core.js",
+);
 const animationCoordinatorPath = path.join(
   __dirname,
   "src",

@@ -10,5 +10,9 @@
     "types": ["node"],
     "skipLibCheck": true
   },
-  "include": ["memory-curve-core.js"]
+  "include": [
+    "src/features/memory-review/core.js",
+    "src/features/classic-deck/model.js",
+    "src/features/memory-review/refresh-policy.js"
+  ]
 }

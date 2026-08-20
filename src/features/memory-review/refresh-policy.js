@@ -2,9 +2,9 @@
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) {
-    root.PidanvocaMemoryRefresh = Object.assign(
+    /** @type {any} */ (root).PidanvocaMemoryRefresh = Object.assign(
       {},
-      root.PidanvocaMemoryRefresh || {},
+      /** @type {any} */ (root).PidanvocaMemoryRefresh || {},
       api,
     );
   }
@@ -17,6 +17,12 @@
     const defaultMaximumDelay = 5 * 60_000;
     const dueBoundaryPadding = 250;
 
+    /**
+     * @param {number} now
+     * @param {number | null} nextDue
+     * @param {number} [minimumDelay]
+     * @param {number} [maximumDelay]
+     */
     function nextRefreshDelay(
       now,
       nextDue,
@@ -34,6 +40,11 @@
       return Math.max(minimum, Math.min(maximum, untilNextDue));
     }
 
+    /**
+     * @param {number} previousTime
+     * @param {number} currentTime
+     * @param {number} [tolerance]
+     */
     function hasSignificantClockRollback(
       previousTime,
       currentTime,

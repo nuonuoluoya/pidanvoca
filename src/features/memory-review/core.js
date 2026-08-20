@@ -2,7 +2,7 @@
  * @param {any} root
  * @param {() => Record<string, unknown>} factory
  */
-(function exposeMemoryCurveCore(root, factory) {
+(function attachMemoryCurveCore(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
   else if (root) /** @type {any} */ (root).MemoryCurveCore = api;

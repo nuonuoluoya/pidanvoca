@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const memoryCore = require("../memory-curve-core");
+const memoryCore = require("../src/features/memory-review/core");
 const {
   applyRating,
   buildReviewQueue,
