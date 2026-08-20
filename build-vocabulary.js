@@ -1034,6 +1034,8 @@ const output = `<!doctype html>
       color: var(--text);
       background: linear-gradient(150deg,#fff 0%,#fbfdff 62%,#eef7ff 100%);
       box-shadow: 0 22px 56px rgba(69,96,130,0.13), 0 4px 14px rgba(69,96,130,0.06), inset 0 1px 0 #fff;
+      transform-origin: 50% 50% -1120px;
+      transform-style: preserve-3d;
       transform: translateY(8px) scale(0.988);
       transition: transform 280ms cubic-bezier(0.2,0.8,0.2,1);
     }
@@ -1074,7 +1076,7 @@ const output = `<!doctype html>
     .memory-panel--flight {
       position: absolute;
       inset: 0;
-      z-index: 14;
+      z-index: 24;
       pointer-events: none;
       will-change: transform, opacity, filter, box-shadow;
       box-shadow: 0 32px 76px rgba(69,96,130,0.22);
@@ -1086,7 +1088,10 @@ const output = `<!doctype html>
     }
 
     .memory-backdrop.is-visible > .memory-panel.memory-panel--incoming {
-      z-index: 11;
+      position: absolute;
+      inset: 0;
+      z-index: 12;
+      pointer-events: none;
       opacity: 0;
       filter: saturate(0.82) brightness(0.99);
       transform: translateZ(-150px) rotateY(14deg) scale(0.94);
@@ -3299,6 +3304,9 @@ const output = `<!doctype html>
     const memoryActionHistory = [];
     let memoryRatingPending = false;
     let memorySummaryToken = 0;
+      const animationCoordinator = new window.PidanvocaAnimations.AnimationCoordinator(({ state }) => {
+        deckStage.dataset.animationState = state;
+      });
       const visibleRadius = 3;
       const exitPoints = new Map();
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -3666,12 +3674,83 @@ const output = `<!doctype html>
 
     function cloneMemoryPanelForTransition(...classNames) {
       const panel = memoryPanel.cloneNode(true);
-      panel.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
+      panel.querySelectorAll('[id]').forEach((element) => {
+        element.dataset.memoryCloneId = element.id;
+        element.removeAttribute('id');
+      });
       panel.removeAttribute('role');
       panel.removeAttribute('aria-labelledby');
       panel.setAttribute('aria-hidden', 'true');
       panel.classList.add(...classNames);
       return panel;
+    }
+
+    function memoryClonePart(panel, id) {
+      return panel.querySelector('[data-memory-clone-id="' + id + '"]');
+    }
+
+    function populateMemoryTransitionPanel(panel) {
+      const item = memoryCurrentItem();
+      const complete = memoryClonePart(panel, 'memoryComplete');
+      const card = memoryClonePart(panel, 'memoryCard');
+      const ratingActions = memoryClonePart(panel, 'memoryRatingActions');
+      const progressText = memoryClonePart(panel, 'memoryProgressText');
+      const progressFill = memoryClonePart(panel, 'memoryProgressFill');
+      const queueText = memoryClonePart(panel, 'memoryQueueText');
+      complete.hidden = Boolean(item);
+      card.hidden = !item;
+      ratingActions.hidden = !item;
+      if (!item) {
+        progressText.textContent = memoryQueue.length + ' / ' + memoryQueue.length;
+        progressFill.style.width = '100%';
+        queueText.textContent = '今日完成';
+        memoryClonePart(panel, 'memoryCompleteDetail').textContent = '完成 ' + memorySessionReviewed + ' 次复习，学习 ' + memorySessionNew + ' 个新词。';
+        return;
+      }
+
+      const previewTime = new Date();
+      const preview = memoryScheduler.repeat(memoryPreviewCard(item), previewTime);
+      const isSpelling = memoryStudyMode === 'spelling';
+      card.classList.remove('is-revealed');
+      card.classList.toggle('is-spelling', isSpelling);
+      progressText.textContent = (memoryIndex + 1) + ' / ' + memoryQueue.length;
+      progressFill.style.width = Math.round(memoryIndex / Math.max(1, memoryQueue.length) * 100) + '%';
+      queueText.textContent = item.isNew ? '今日新词' : '到期复习';
+      memoryClonePart(panel, 'memoryCardWord').textContent = isSpelling ? '' : item.word.word;
+      memoryClonePart(panel, 'memoryCardPrompt').textContent = isSpelling ? (item.word.meaning || '根据释义拼写单词') : '回想后直接评分，或查看答案';
+      const phonetic = memoryClonePart(panel, 'memoryAnswerPhonetic');
+      phonetic.textContent = item.word.phonetic || '';
+      phonetic.hidden = !item.word.phonetic;
+      memoryClonePart(panel, 'memoryAnswerMeaning').textContent = item.word.meaning || '暂无释义';
+      const note = memoryClonePart(panel, 'memoryAnswerNote');
+      note.textContent = item.word.note || '';
+      note.hidden = !item.word.note;
+      memoryClonePart(panel, 'memoryAnswer').hidden = true;
+      memoryClonePart(panel, 'memorySpelling').hidden = !isSpelling;
+      memoryClonePart(panel, 'memoryAgainInterval').textContent = memoryCore.intervalLabel(previewTime, preview[window.FSRS.Rating.Again].card.due);
+      memoryClonePart(panel, 'memoryGoodInterval').textContent = memoryCore.intervalLabel(previewTime, preview[window.FSRS.Rating.Good].card.due);
+    }
+
+    function waitForElementTransition(element, propertyName, fallbackMilliseconds) {
+      return new Promise((resolve) => {
+        let fallbackTimer = 0;
+        const finish = () => {
+          element.removeEventListener('transitionend', handleTransitionEnd);
+          element.removeEventListener('transitioncancel', finish);
+          window.clearTimeout(fallbackTimer);
+          resolve();
+        };
+        const handleTransitionEnd = (event) => {
+          if (event.target === element && event.propertyName === propertyName) finish();
+        };
+        element.addEventListener('transitionend', handleTransitionEnd);
+        element.addEventListener('transitioncancel', finish);
+        fallbackTimer = window.setTimeout(finish, fallbackMilliseconds);
+      });
+    }
+
+    function afterTwoAnimationFrames(callback) {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(callback));
     }
 
     function prepareMemoryStackAdvance() {
@@ -3705,44 +3784,53 @@ const output = `<!doctype html>
       bringCurrentCardForward(cards);
     }
 
-    async function transitionMemoryCardAfterRating(exitPoint, advanceFromStack = false) {
+    async function transitionMemoryCardAfterRating(exitPoint, advanceFromStack, transition) {
       if (reducedMotion.matches) {
         renderMemoryCard();
+        transition.finish();
         return;
       }
-      const flightCard = cloneMemoryPanelForTransition('memory-panel--flight');
-      applyExitPoint(flightCard, exitPoint || createExitPoint());
-      memoryBackdrop.append(flightCard);
+      const incomingPanel = cloneMemoryPanelForTransition('memory-panel--incoming');
+      populateMemoryTransitionPanel(incomingPanel);
       const stackAdvance = advanceFromStack ? prepareMemoryStackAdvance() : null;
-      if (advanceFromStack) memoryPanel.classList.add('memory-panel--incoming');
+      memoryPanel.classList.add('memory-panel--flight');
+      applyExitPoint(memoryPanel, exitPoint || createExitPoint());
+      memoryBackdrop.append(incomingPanel);
       memoryBackdrop.classList.add('is-transitioning');
-      renderMemoryCard(false);
-      void flightCard.offsetWidth;
+      const outgoingFinished = waitForElementTransition(memoryPanel, 'transform', 560);
+      const incomingFinished = waitForElementTransition(incomingPanel, 'transform', 760);
+      void incomingPanel.offsetWidth;
       try {
         await new Promise((resolve) => {
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => {
-              flightCard.classList.add('is-flying-out');
-              if (advanceFromStack) {
-                startMemoryStackAdvance(stackAdvance);
-                memoryBackdrop.classList.add('is-card-advancing');
-              }
-              window.setTimeout(resolve, advanceFromStack ? 680 : 520);
-            });
+          afterTwoAnimationFrames(() => {
+            memoryPanel.classList.add('is-flying-out');
+            if (stackAdvance) {
+              transition.move('advancing-stack');
+              startMemoryStackAdvance(stackAdvance);
+            }
+            transition.move('revealing-incoming');
+            memoryBackdrop.classList.add('is-card-advancing');
+            Promise.all([outgoingFinished, incomingFinished]).then(resolve);
           });
         });
       } finally {
-        flightCard.remove();
+        memoryPanel.style.visibility = 'hidden';
+        memoryPanel.classList.remove('memory-panel--flight', 'is-flying-out');
+        clearExitPoint(memoryPanel);
+        renderMemoryCard(false);
         finishMemoryStackAdvance(stackAdvance);
-        memoryPanel.classList.remove('memory-panel--incoming');
         memoryBackdrop.classList.remove('is-transitioning', 'is-card-advancing');
+        incomingPanel.remove();
+        memoryPanel.style.removeProperty('visibility');
+        if (transition.isActive()) transition.finish();
       }
       focusMemorySurface();
     }
 
-    async function transitionMemoryCardAfterUndo(exitPoint) {
+    async function transitionMemoryCardAfterUndo(exitPoint, transition) {
       if (reducedMotion.matches) {
         renderMemoryCard();
+        transition.finish();
         return;
       }
       const yieldingPanel = cloneMemoryPanelForTransition('memory-panel--yielding');
@@ -3753,22 +3841,11 @@ const output = `<!doctype html>
       renderMemoryCard(false);
       void memoryPanel.offsetWidth;
       try {
+        const returningFinished = waitForElementTransition(memoryPanel, 'transform', 680);
         await new Promise((resolve) => {
-          let fallbackTimer = 0;
-          const finish = () => {
-            memoryPanel.removeEventListener('transitionend', handleTransitionEnd);
-            window.clearTimeout(fallbackTimer);
-            resolve();
-          };
-          const handleTransitionEnd = (event) => {
-            if (event.target === memoryPanel && event.propertyName === 'transform') finish();
-          };
-          memoryPanel.addEventListener('transitionend', handleTransitionEnd);
-          window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => {
-              memoryBackdrop.classList.add('is-undo-returning');
-              fallbackTimer = window.setTimeout(finish, 640);
-            });
+          afterTwoAnimationFrames(() => {
+            memoryBackdrop.classList.add('is-undo-returning');
+            returningFinished.then(resolve);
           });
         });
       } finally {
@@ -3776,6 +3853,7 @@ const output = `<!doctype html>
         memoryPanel.classList.remove('memory-panel--returning');
         clearExitPoint(memoryPanel);
         memoryBackdrop.classList.remove('is-transitioning', 'is-undo-returning');
+        if (transition.isActive()) transition.finish();
       }
       focusMemorySurface();
     }
@@ -3895,7 +3973,7 @@ const output = `<!doctype html>
 
     async function rateMemoryCard(rating) {
       const item = memoryCurrentItem();
-      if (!item || !memoryPreview || memoryRatingPending || (rating !== window.FSRS.Rating.Again && rating !== window.FSRS.Rating.Good)) return;
+      if (!item || !memoryPreview || memoryRatingPending || !animationCoordinator.isIdle || (rating !== window.FSRS.Rating.Again && rating !== window.FSRS.Rating.Good)) return;
       if (memoryStudyMode === 'spelling') {
         if (rating === window.FSRS.Rating.Good && !memorySpellingAccepted) return;
       }
@@ -3905,6 +3983,7 @@ const output = `<!doctype html>
       memoryRevealButton.disabled = true;
       memoryGoodButton.disabled = true;
       document.body.classList.remove('memory-good-enabled');
+      const transition = animationCoordinator.begin('saving-rating', { mode: 'memory', direction: 'forward' });
       try {
         const result = memoryPreview[rating];
         const bookId = activeMemoryBookId();
@@ -3950,9 +4029,11 @@ const output = `<!doctype html>
         else memorySessionReviewed += 1;
         item.record = afterRecord;
         memoryIndex += 1;
-        await transitionMemoryCardAfterRating(exitPoint, rating === window.FSRS.Rating.Good);
+        transition.move('exiting-current');
+        await transitionMemoryCardAfterRating(exitPoint, rating === window.FSRS.Rating.Good, transition);
         refreshMemorySummary();
       } catch (error) {
+        transition.cancel('rating-failed');
         if (memoryStudyMode === 'spelling' && rating === window.FSRS.Rating.Good) {
           memorySpellingAccepted = false;
           memorySpellingInput.readOnly = false;
@@ -3962,6 +4043,7 @@ const output = `<!doctype html>
         }
         showImportStatus(error instanceof Error ? error.message : '学习进度未保存，请重试。', true);
       } finally {
+        if (transition.isActive()) transition.cancel('rating-finished-without-settling');
         memoryRatingPending = false;
         memoryRevealButton.disabled = !memoryCurrentItem();
         syncMemoryRatingButtons();
@@ -3971,12 +4053,13 @@ const output = `<!doctype html>
 
     async function undoMemoryRating() {
       const action = memoryActionHistory.at(-1);
-      if (!action || memoryRatingPending) return;
+      if (!action || memoryRatingPending || !animationCoordinator.isIdle) return;
       memoryRatingPending = true;
       memoryUndoButton.disabled = true;
       memoryAgainButton.disabled = true;
       memoryRevealButton.disabled = true;
       memoryGoodButton.disabled = true;
+      const transition = animationCoordinator.begin('undo-returning', { mode: 'memory', direction: 'backward' });
       try {
         if (memoryStorageAvailable) {
           const database = await openVocabularyDatabase();
@@ -3992,6 +4075,7 @@ const output = `<!doctype html>
           memoryVolatileLogs.delete(action.logId);
         }
       } catch {
+        transition.cancel('undo-save-failed');
         showImportStatus('撤销失败，原评分仍然保留。', true);
         memoryRatingPending = false;
         syncMemoryRatingButtons();
@@ -4006,10 +4090,12 @@ const output = `<!doctype html>
       if (action.wasNew) memorySessionNew = Math.max(0, memorySessionNew - 1);
       else memorySessionReviewed = Math.max(0, memorySessionReviewed - 1);
       try {
-        await transitionMemoryCardAfterUndo(action.exitPoint);
+        await transitionMemoryCardAfterUndo(action.exitPoint, transition);
       } catch {
+        transition.cancel('undo-animation-failed');
         renderMemoryCard(false);
       } finally {
+        if (transition.isActive()) transition.cancel('undo-finished-without-settling');
         memoryRatingPending = false;
         memoryRevealButton.disabled = !memoryCurrentItem();
         syncMemoryRatingButtons();
