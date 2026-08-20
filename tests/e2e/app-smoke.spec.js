@@ -183,6 +183,16 @@ test("导入词本复用共享解析规则并生成两张卡", async ({ page }) 
   ).toContainText("/2");
 });
 
+test("导入在读取前拒绝非 HTML 文件", async ({ page }) => {
+  await page.locator("#importInput").setInputFiles({
+    name: "words.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("not a wordbook"),
+  });
+  await expect(page.locator("#importStatus")).toContainText("不是 HTML 生词本");
+  await expect(page.locator("#importStatus")).toHaveClass(/is-error/);
+});
+
 test("设置控制器同步主题、抽屉和内置词本切换", async ({ page }) => {
   await page.locator("#settingsButton").click();
   await expect(page.locator("body")).toHaveClass(/settings-open/);

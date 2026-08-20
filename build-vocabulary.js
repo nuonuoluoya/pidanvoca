@@ -119,6 +119,20 @@ const settingsControllerPath = path.join(
   "controller.js",
 );
 const appEventsPath = path.join(__dirname, "src", "app", "events.js");
+const importProcessorPath = path.join(
+  __dirname,
+  "src",
+  "services",
+  "import",
+  "processor.js",
+);
+const importWorkerPath = path.join(
+  __dirname,
+  "src",
+  "services",
+  "import",
+  "import-worker.js",
+);
 const fsrsEntryPath = require.resolve("ts-fsrs");
 const fsrsBrowserBundlePath = path.join(
   path.dirname(fsrsEntryPath),
@@ -356,6 +370,17 @@ const embeddedAppEvents = fs
   .readFileSync(appEventsPath, "utf8")
   .replace(/[ \t]+$/gm, "")
   .replace(/<\/script/gi, "<\\/script");
+const embeddedImportProcessor = fs
+  .readFileSync(importProcessorPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedImportWorker = fs
+  .readFileSync(importWorkerPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedImportWorkerSource = JSON.stringify(
+  embeddedImportProcessor + "\n" + embeddedImportWorker,
+).replace(/</g, "\\u003c");
 const embeddedFsrsBundle = fs
   .readFileSync(fsrsBrowserBundlePath, "utf8")
   .replace(/[ \t]+$/gm, "")
@@ -3056,6 +3081,7 @@ const output = `<!doctype html>
   <script>${embeddedSettingsRepository}</script>
   <script>${embeddedSettingsController}</script>
   <script>${embeddedAppEvents}</script>
+  <script>${embeddedImportProcessor}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const APP_BUILD_TARGET = 'offline';
@@ -3065,6 +3091,7 @@ const output = `<!doctype html>
     const LEGACY_BUILT_IN_BOOK_IDS = ${embeddedLegacyBuiltInBookIds};
     const DEFAULT_BOOK = BUILT_IN_BOOKS.find((book) => book.id === DEFAULT_BOOK_ID) || BUILT_IN_BOOKS[0];
     const DEFAULT_WORDS = DEFAULT_BOOK.words;
+    const IMPORT_WORKER_SOURCE = ${embeddedImportWorkerSource};
     const vocabularyStorageKey = 'random-vocabulary:last-import:v1';
     const studySizeStorageKey = 'random-vocabulary:study-size:v1';
     const studySizePreferencesStorageKey = 'random-vocabulary:study-sizes:v2';
@@ -3443,6 +3470,8 @@ const output = `<!doctype html>
     let isTransitioning = false;
     let isReady = false;
     let isImporting = false;
+    let activeImportWorker = null;
+    let activeImportTaskId = null;
     let spellingAdvanceTimer = 0;
     let studyCompleteTimer = 0;
     let memoryDailyNew = memoryCore.defaultDailyNew;
@@ -4441,6 +4470,7 @@ const output = `<!doctype html>
 
     const importedEntityDecoder = document.createElement('textarea');
     const importBatchSize = 100;
+    const importLimits = window.PidanvocaImport.DEFAULT_IMPORT_LIMITS;
 
     function decodeImportedEntities(value) {
       importedEntityDecoder.innerHTML = value;
@@ -4498,6 +4528,7 @@ const output = `<!doctype html>
         if (batch.length < importBatchSize) continue;
         const batchDocument = parser.parseFromString('<table><tbody>' + batch.join('') + '</tbody></table>', 'text/html');
         collectImportedRows(batchDocument, entries);
+        if (entries.length > importLimits.maxBookEntries) throw new Error('单个生词本超过 ' + importLimits.maxBookEntries + ' 个词条。');
         batch.length = 0;
         if (onProgress) onProgress(discoveredRows);
         await yieldToMainThread();
@@ -4511,34 +4542,57 @@ const output = `<!doctype html>
       if (!discoveredRows) {
         collectImportedRows(parser.parseFromString(sourceHtml, 'text/html'), entries);
       }
+      if (entries.length > importLimits.maxBookEntries) throw new Error('单个生词本超过 ' + importLimits.maxBookEntries + ' 个词条。');
       return entries;
     }
 
-    function mergeDistinctText(currentValue, incomingValue) {
-      if (!incomingValue) return currentValue;
-      if (!currentValue) return incomingValue;
-      if (currentValue === incomingValue || currentValue.includes(incomingValue)) return currentValue;
-      if (incomingValue.includes(currentValue)) return incomingValue;
-      return currentValue + '\\n\\n' + incomingValue;
+    function validateImportFiles(files) {
+      return window.PidanvocaImport.validateFileSelection(files, importLimits);
     }
 
-    function replaceWithImportedWords(importedWords) {
-      const wordMap = new Map();
+    function cancelImportTask() {
+      if (!activeImportWorker || !activeImportTaskId) return false;
+      activeImportWorker.postMessage({ type: 'cancel', taskId: activeImportTaskId });
+      return true;
+    }
 
-      importedWords.forEach((entry) => {
-        const key = entry.word.toLocaleLowerCase();
-        const existing = wordMap.get(key);
-        if (!existing) {
-          wordMap.set(key, { ...entry });
-          return;
-        }
-        existing.phonetic = existing.phonetic || entry.phonetic;
-        existing.meaning = mergeDistinctText(existing.meaning, entry.meaning);
-        existing.note = mergeDistinctText(existing.note, entry.note);
+    function processImportedBooks(books, onProgress) {
+      if (!('Worker' in window)) {
+        return window.PidanvocaImport.processImportedBooks(books, {
+          limits: importLimits,
+          onProgress,
+          yieldControl: yieldToMainThread
+        });
+      }
+      const workerUrl = URL.createObjectURL(new Blob([IMPORT_WORKER_SOURCE], { type: 'text/javascript' }));
+      const worker = new Worker(workerUrl);
+      const taskId = memoryUuid();
+      activeImportWorker = worker;
+      activeImportTaskId = taskId;
+      return new Promise((resolve, reject) => {
+        const cleanup = () => {
+          worker.terminate();
+          URL.revokeObjectURL(workerUrl);
+          if (activeImportWorker === worker) activeImportWorker = null;
+          if (activeImportTaskId === taskId) activeImportTaskId = null;
+        };
+        worker.addEventListener('message', (event) => {
+          const message = event.data || {};
+          if (message.taskId !== taskId) return;
+          if (message.type === 'progress') {
+            onProgress(message.progress);
+            return;
+          }
+          cleanup();
+          if (message.type === 'complete') resolve(message.result);
+          else reject(new Error(message.message || (message.type === 'cancelled' ? '导入已取消。' : '导入处理失败。')));
+        });
+        worker.addEventListener('error', () => {
+          cleanup();
+          reject(new Error('导入 Worker 运行失败。'));
+        }, { once: true });
+        worker.postMessage({ type: 'process', taskId, books, limits: importLimits });
       });
-
-      WORDS = Array.from(wordMap.values());
-      return WORDS.length;
     }
 
     async function rememberVocabulary({
@@ -4596,6 +4650,13 @@ const output = `<!doctype html>
 
     async function importBooks(files) {
       if (!files.length) return;
+      try {
+        validateImportFiles(files);
+      } catch (error) {
+        showImportStatus(error instanceof Error ? error.message : '导入文件超出限制。', true);
+        importInput.value = '';
+        return;
+      }
       isImporting = true;
       importButton.disabled = true;
       showImportStatus('正在读取 ' + files.length + ' 个生词本…', false, true);
@@ -4612,10 +4673,14 @@ const output = `<!doctype html>
           books.push({ fileName: file.name, entries });
           await yieldToMainThread();
         }
-        const validBooks = books.filter((book) => book.entries.length > 0);
+        const processed = await processImportedBooks(books, ({ processedEntries }) => {
+          showImportStatus('正在校验并合并词条，已处理 ' + processedEntries + ' 条…', false, true);
+        });
+        const validBooks = processed.books;
         if (!validBooks.length) throw new Error('未在所选文件中识别到生词表，请选择 HTML 格式的导出生词本。');
 
-        const total = replaceWithImportedWords(validBooks.flatMap((book) => book.entries));
+        WORDS = processed.combinedWords;
+        const total = WORDS.length;
         storeImportedBooks(validBooks);
         renderWordbookLists();
         const remembered = await rememberVocabulary({ fileNames: validBooks.map((book) => book.fileName) });
@@ -5512,7 +5577,14 @@ const output = `<!doctype html>
           if (document.hidden) cancelActiveCardTransition('document-hidden');
         }
       },
-      { target: window, type: 'pagehide', listener: () => cancelActiveCardTransition('page-hidden') },
+      {
+        target: window,
+        type: 'pagehide',
+        listener: () => {
+          cancelActiveCardTransition('page-hidden');
+          cancelImportTask();
+        }
+      },
       { target: themeButton, type: 'click', listener: () => setTheme(settingsController.toggleTheme()) },
       {
         target: settingsButton,

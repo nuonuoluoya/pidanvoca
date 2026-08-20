@@ -4639,6 +4639,163 @@ function parseWordbook(source, fileName = "wordbook.html") {
   },
 );
 </script>
+  <script>(function attachImportProcessor(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.PidanvocaImport = api;
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createImportProcessorApi() {
+    "use strict";
+
+    const DEFAULT_IMPORT_LIMITS = Object.freeze({
+      maxFiles: 20,
+      maxFileBytes: 10 * 1024 * 1024,
+      maxTotalBytes: 50 * 1024 * 1024,
+      maxBookEntries: 20000,
+      maxTotalEntries: 50000,
+      maxWordLength: 200,
+      maxPhoneticLength: 500,
+      maxMeaningLength: 10000,
+      maxNoteLength: 10000,
+      yieldEvery: 250,
+    });
+
+    class ImportCancelledError extends Error {
+      constructor() {
+        super("导入已取消。");
+        this.name = "ImportCancelledError";
+      }
+    }
+
+    function normalizeText(value) {
+      return typeof value === "string" ? value.trim() : "";
+    }
+
+    function validateLength(label, value, maximum) {
+      if (value.length > maximum) {
+        throw new Error(`${label}超过 ${maximum} 个字符。`);
+      }
+    }
+
+    function normalizeEntry(entry, limits = DEFAULT_IMPORT_LIMITS) {
+      const word = normalizeText(entry?.word);
+      const phonetic = normalizeText(entry?.phonetic);
+      const meaning = normalizeText(entry?.meaning);
+      const note = normalizeText(entry?.note);
+      if (!word) return null;
+      validateLength("单词", word, limits.maxWordLength);
+      validateLength("音标", phonetic, limits.maxPhoneticLength);
+      validateLength("中文释义", meaning, limits.maxMeaningLength);
+      validateLength("英文笔记", note, limits.maxNoteLength);
+      return { word, phonetic, meaning, note };
+    }
+
+    function validateFileSelection(files, limits = DEFAULT_IMPORT_LIMITS) {
+      if (!Array.isArray(files) || files.length > limits.maxFiles) {
+        throw new Error(`一次最多导入 ${limits.maxFiles} 个生词本。`);
+      }
+      let totalBytes = 0;
+      files.forEach((file) => {
+        if (!/\.html?$/i.test(file?.name || "")) {
+          throw new Error(`“${file?.name || "未命名文件"}”不是 HTML 生词本。`);
+        }
+        if (!Number.isFinite(file.size) || file.size < 0) {
+          throw new Error(`“${file.name}”的文件大小无效。`);
+        }
+        if (file.size > limits.maxFileBytes) {
+          throw new Error(`“${file.name}”超过单文件大小限制。`);
+        }
+        totalBytes += file.size;
+      });
+      if (totalBytes > limits.maxTotalBytes) {
+        throw new Error("所选文件合计超过总大小限制。");
+      }
+      return Object.freeze({ fileCount: files.length, totalBytes });
+    }
+
+    function mergeDistinctText(currentValue, incomingValue) {
+      if (!incomingValue) return currentValue;
+      if (!currentValue) return incomingValue;
+      if (
+        currentValue === incomingValue ||
+        currentValue.includes(incomingValue)
+      )
+        return currentValue;
+      if (incomingValue.includes(currentValue)) return incomingValue;
+      return `${currentValue}\n\n${incomingValue}`;
+    }
+
+    function mergeEntry(wordMap, entry) {
+      const key = entry.word.toLocaleLowerCase();
+      const existing = wordMap.get(key);
+      if (!existing) {
+        wordMap.set(key, { ...entry });
+        return;
+      }
+      existing.phonetic = existing.phonetic || entry.phonetic;
+      existing.meaning = mergeDistinctText(existing.meaning, entry.meaning);
+      existing.note = mergeDistinctText(existing.note, entry.note);
+    }
+
+    async function processImportedBooks(books, options = {}) {
+      const limits = { ...DEFAULT_IMPORT_LIMITS, ...(options.limits || {}) };
+      if (!Array.isArray(books) || books.length > limits.maxFiles) {
+        throw new Error(`一次最多处理 ${limits.maxFiles} 个生词本。`);
+      }
+      const processedBooks = [];
+      const combined = new Map();
+      let processedEntries = 0;
+      let sourceEntries = 0;
+      for (const book of books) {
+        if (options.isCancelled?.()) throw new ImportCancelledError();
+        const source = Array.isArray(book?.entries) ? book.entries : [];
+        if (source.length > limits.maxBookEntries) {
+          throw new Error(
+            `“${book?.fileName || "未命名词本"}”超过 ${limits.maxBookEntries} 个词条。`,
+          );
+        }
+        sourceEntries += source.length;
+        if (sourceEntries > limits.maxTotalEntries) {
+          throw new Error(`合计词条数超过 ${limits.maxTotalEntries}。`);
+        }
+        const entries = [];
+        for (const rawEntry of source) {
+          const entry = normalizeEntry(rawEntry, limits);
+          if (entry) {
+            entries.push(entry);
+            mergeEntry(combined, entry);
+          }
+          processedEntries += 1;
+          if (processedEntries % limits.yieldEvery === 0) {
+            options.onProgress?.({ processedEntries, sourceEntries });
+            await (options.yieldControl?.() || Promise.resolve());
+            if (options.isCancelled?.()) throw new ImportCancelledError();
+          }
+        }
+        if (entries.length) {
+          processedBooks.push({ fileName: book.fileName, entries });
+        }
+      }
+      options.onProgress?.({ processedEntries, sourceEntries });
+      return {
+        books: processedBooks,
+        combinedWords: Array.from(combined.values()),
+        sourceEntries,
+      };
+    }
+
+    return Object.freeze({
+      DEFAULT_IMPORT_LIMITS,
+      ImportCancelledError,
+      validateFileSelection,
+      normalizeEntry,
+      mergeDistinctText,
+      processImportedBooks,
+    });
+  },
+);
+</script>
   <script>/* ts-fsrs 5.4.1, MIT License */
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
@@ -6642,6 +6799,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     const LEGACY_BUILT_IN_BOOK_IDS = {"大学英语六级单词本.html":"cet-6-vocabulary.html","大学英语四级单词本.html":"cet-4-vocabulary.html","高考英语单词本.html":"college-entrance-exam-vocabulary.html","考研英语单词本.html":"postgraduate-entrance-exam-vocabulary.html","小学英语单词本.html":"primary-school-vocabulary.html","雅思英语单词本.html":"ielts-vocabulary.html","中考英语单词本.html":"junior-high-school-entrance-exam-vocabulary.html"};
     const DEFAULT_BOOK = BUILT_IN_BOOKS.find((book) => book.id === DEFAULT_BOOK_ID) || BUILT_IN_BOOKS[0];
     const DEFAULT_WORDS = DEFAULT_BOOK.words;
+    const IMPORT_WORKER_SOURCE = "(function attachImportProcessor(root, factory) {\n  const api = factory();\n  if (typeof module === \"object\" && module.exports) module.exports = api;\n  if (root) root.PidanvocaImport = api;\n})(\n  typeof globalThis !== \"undefined\" ? globalThis : this,\n  function createImportProcessorApi() {\n    \"use strict\";\n\n    const DEFAULT_IMPORT_LIMITS = Object.freeze({\n      maxFiles: 20,\n      maxFileBytes: 10 * 1024 * 1024,\n      maxTotalBytes: 50 * 1024 * 1024,\n      maxBookEntries: 20000,\n      maxTotalEntries: 50000,\n      maxWordLength: 200,\n      maxPhoneticLength: 500,\n      maxMeaningLength: 10000,\n      maxNoteLength: 10000,\n      yieldEvery: 250,\n    });\n\n    class ImportCancelledError extends Error {\n      constructor() {\n        super(\"导入已取消。\");\n        this.name = \"ImportCancelledError\";\n      }\n    }\n\n    function normalizeText(value) {\n      return typeof value === \"string\" ? value.trim() : \"\";\n    }\n\n    function validateLength(label, value, maximum) {\n      if (value.length > maximum) {\n        throw new Error(`${label}超过 ${maximum} 个字符。`);\n      }\n    }\n\n    function normalizeEntry(entry, limits = DEFAULT_IMPORT_LIMITS) {\n      const word = normalizeText(entry?.word);\n      const phonetic = normalizeText(entry?.phonetic);\n      const meaning = normalizeText(entry?.meaning);\n      const note = normalizeText(entry?.note);\n      if (!word) return null;\n      validateLength(\"单词\", word, limits.maxWordLength);\n      validateLength(\"音标\", phonetic, limits.maxPhoneticLength);\n      validateLength(\"中文释义\", meaning, limits.maxMeaningLength);\n      validateLength(\"英文笔记\", note, limits.maxNoteLength);\n      return { word, phonetic, meaning, note };\n    }\n\n    function validateFileSelection(files, limits = DEFAULT_IMPORT_LIMITS) {\n      if (!Array.isArray(files) || files.length > limits.maxFiles) {\n        throw new Error(`一次最多导入 ${limits.maxFiles} 个生词本。`);\n      }\n      let totalBytes = 0;\n      files.forEach((file) => {\n        if (!/\\.html?$/i.test(file?.name || \"\")) {\n          throw new Error(`“${file?.name || \"未命名文件\"}”不是 HTML 生词本。`);\n        }\n        if (!Number.isFinite(file.size) || file.size \u003c 0) {\n          throw new Error(`“${file.name}”的文件大小无效。`);\n        }\n        if (file.size > limits.maxFileBytes) {\n          throw new Error(`“${file.name}”超过单文件大小限制。`);\n        }\n        totalBytes += file.size;\n      });\n      if (totalBytes > limits.maxTotalBytes) {\n        throw new Error(\"所选文件合计超过总大小限制。\");\n      }\n      return Object.freeze({ fileCount: files.length, totalBytes });\n    }\n\n    function mergeDistinctText(currentValue, incomingValue) {\n      if (!incomingValue) return currentValue;\n      if (!currentValue) return incomingValue;\n      if (\n        currentValue === incomingValue ||\n        currentValue.includes(incomingValue)\n      )\n        return currentValue;\n      if (incomingValue.includes(currentValue)) return incomingValue;\n      return `${currentValue}\\n\\n${incomingValue}`;\n    }\n\n    function mergeEntry(wordMap, entry) {\n      const key = entry.word.toLocaleLowerCase();\n      const existing = wordMap.get(key);\n      if (!existing) {\n        wordMap.set(key, { ...entry });\n        return;\n      }\n      existing.phonetic = existing.phonetic || entry.phonetic;\n      existing.meaning = mergeDistinctText(existing.meaning, entry.meaning);\n      existing.note = mergeDistinctText(existing.note, entry.note);\n    }\n\n    async function processImportedBooks(books, options = {}) {\n      const limits = { ...DEFAULT_IMPORT_LIMITS, ...(options.limits || {}) };\n      if (!Array.isArray(books) || books.length > limits.maxFiles) {\n        throw new Error(`一次最多处理 ${limits.maxFiles} 个生词本。`);\n      }\n      const processedBooks = [];\n      const combined = new Map();\n      let processedEntries = 0;\n      let sourceEntries = 0;\n      for (const book of books) {\n        if (options.isCancelled?.()) throw new ImportCancelledError();\n        const source = Array.isArray(book?.entries) ? book.entries : [];\n        if (source.length > limits.maxBookEntries) {\n          throw new Error(\n            `“${book?.fileName || \"未命名词本\"}”超过 ${limits.maxBookEntries} 个词条。`,\n          );\n        }\n        sourceEntries += source.length;\n        if (sourceEntries > limits.maxTotalEntries) {\n          throw new Error(`合计词条数超过 ${limits.maxTotalEntries}。`);\n        }\n        const entries = [];\n        for (const rawEntry of source) {\n          const entry = normalizeEntry(rawEntry, limits);\n          if (entry) {\n            entries.push(entry);\n            mergeEntry(combined, entry);\n          }\n          processedEntries += 1;\n          if (processedEntries % limits.yieldEvery === 0) {\n            options.onProgress?.({ processedEntries, sourceEntries });\n            await (options.yieldControl?.() || Promise.resolve());\n            if (options.isCancelled?.()) throw new ImportCancelledError();\n          }\n        }\n        if (entries.length) {\n          processedBooks.push({ fileName: book.fileName, entries });\n        }\n      }\n      options.onProgress?.({ processedEntries, sourceEntries });\n      return {\n        books: processedBooks,\n        combinedWords: Array.from(combined.values()),\n        sourceEntries,\n      };\n    }\n\n    return Object.freeze({\n      DEFAULT_IMPORT_LIMITS,\n      ImportCancelledError,\n      validateFileSelection,\n      normalizeEntry,\n      mergeDistinctText,\n      processImportedBooks,\n    });\n  },\n);\n\n(function attachImportWorker(workerScope) {\n  \"use strict\";\n\n  const cancelledTasks = new Set();\n\n  workerScope.addEventListener(\"message\", async (event) => {\n    const message = event.data || {};\n    if (message.type === \"cancel\") {\n      cancelledTasks.add(message.taskId);\n      return;\n    }\n    if (message.type !== \"process\" || !message.taskId) return;\n    const { taskId } = message;\n    try {\n      const result = await workerScope.PidanvocaImport.processImportedBooks(\n        message.books,\n        {\n          limits: message.limits,\n          isCancelled: () => cancelledTasks.has(taskId),\n          yieldControl: () =>\n            new Promise((resolve) => workerScope.setTimeout(resolve, 0)),\n          onProgress: (progress) =>\n            workerScope.postMessage({ type: \"progress\", taskId, progress }),\n        },\n      );\n      if (!cancelledTasks.has(taskId)) {\n        workerScope.postMessage({ type: \"complete\", taskId, result });\n      }\n    } catch (error) {\n      workerScope.postMessage({\n        type: error?.name === \"ImportCancelledError\" ? \"cancelled\" : \"error\",\n        taskId,\n        message: error instanceof Error ? error.message : \"导入处理失败。\",\n      });\n    } finally {\n      cancelledTasks.delete(taskId);\n    }\n  });\n})(self);\n";
     const vocabularyStorageKey = 'random-vocabulary:last-import:v1';
     const studySizeStorageKey = 'random-vocabulary:study-size:v1';
     const studySizePreferencesStorageKey = 'random-vocabulary:study-sizes:v2';
@@ -7020,6 +7178,8 @@ function parseWordbook(source, fileName = "wordbook.html") {
     let isTransitioning = false;
     let isReady = false;
     let isImporting = false;
+    let activeImportWorker = null;
+    let activeImportTaskId = null;
     let spellingAdvanceTimer = 0;
     let studyCompleteTimer = 0;
     let memoryDailyNew = memoryCore.defaultDailyNew;
@@ -8018,6 +8178,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
 
     const importedEntityDecoder = document.createElement('textarea');
     const importBatchSize = 100;
+    const importLimits = window.PidanvocaImport.DEFAULT_IMPORT_LIMITS;
 
     function decodeImportedEntities(value) {
       importedEntityDecoder.innerHTML = value;
@@ -8075,6 +8236,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         if (batch.length < importBatchSize) continue;
         const batchDocument = parser.parseFromString('<table><tbody>' + batch.join('') + '</tbody></table>', 'text/html');
         collectImportedRows(batchDocument, entries);
+        if (entries.length > importLimits.maxBookEntries) throw new Error('单个生词本超过 ' + importLimits.maxBookEntries + ' 个词条。');
         batch.length = 0;
         if (onProgress) onProgress(discoveredRows);
         await yieldToMainThread();
@@ -8088,34 +8250,57 @@ function parseWordbook(source, fileName = "wordbook.html") {
       if (!discoveredRows) {
         collectImportedRows(parser.parseFromString(sourceHtml, 'text/html'), entries);
       }
+      if (entries.length > importLimits.maxBookEntries) throw new Error('单个生词本超过 ' + importLimits.maxBookEntries + ' 个词条。');
       return entries;
     }
 
-    function mergeDistinctText(currentValue, incomingValue) {
-      if (!incomingValue) return currentValue;
-      if (!currentValue) return incomingValue;
-      if (currentValue === incomingValue || currentValue.includes(incomingValue)) return currentValue;
-      if (incomingValue.includes(currentValue)) return incomingValue;
-      return currentValue + '\n\n' + incomingValue;
+    function validateImportFiles(files) {
+      return window.PidanvocaImport.validateFileSelection(files, importLimits);
     }
 
-    function replaceWithImportedWords(importedWords) {
-      const wordMap = new Map();
+    function cancelImportTask() {
+      if (!activeImportWorker || !activeImportTaskId) return false;
+      activeImportWorker.postMessage({ type: 'cancel', taskId: activeImportTaskId });
+      return true;
+    }
 
-      importedWords.forEach((entry) => {
-        const key = entry.word.toLocaleLowerCase();
-        const existing = wordMap.get(key);
-        if (!existing) {
-          wordMap.set(key, { ...entry });
-          return;
-        }
-        existing.phonetic = existing.phonetic || entry.phonetic;
-        existing.meaning = mergeDistinctText(existing.meaning, entry.meaning);
-        existing.note = mergeDistinctText(existing.note, entry.note);
+    function processImportedBooks(books, onProgress) {
+      if (!('Worker' in window)) {
+        return window.PidanvocaImport.processImportedBooks(books, {
+          limits: importLimits,
+          onProgress,
+          yieldControl: yieldToMainThread
+        });
+      }
+      const workerUrl = URL.createObjectURL(new Blob([IMPORT_WORKER_SOURCE], { type: 'text/javascript' }));
+      const worker = new Worker(workerUrl);
+      const taskId = memoryUuid();
+      activeImportWorker = worker;
+      activeImportTaskId = taskId;
+      return new Promise((resolve, reject) => {
+        const cleanup = () => {
+          worker.terminate();
+          URL.revokeObjectURL(workerUrl);
+          if (activeImportWorker === worker) activeImportWorker = null;
+          if (activeImportTaskId === taskId) activeImportTaskId = null;
+        };
+        worker.addEventListener('message', (event) => {
+          const message = event.data || {};
+          if (message.taskId !== taskId) return;
+          if (message.type === 'progress') {
+            onProgress(message.progress);
+            return;
+          }
+          cleanup();
+          if (message.type === 'complete') resolve(message.result);
+          else reject(new Error(message.message || (message.type === 'cancelled' ? '导入已取消。' : '导入处理失败。')));
+        });
+        worker.addEventListener('error', () => {
+          cleanup();
+          reject(new Error('导入 Worker 运行失败。'));
+        }, { once: true });
+        worker.postMessage({ type: 'process', taskId, books, limits: importLimits });
       });
-
-      WORDS = Array.from(wordMap.values());
-      return WORDS.length;
     }
 
     async function rememberVocabulary({
@@ -8173,6 +8358,13 @@ function parseWordbook(source, fileName = "wordbook.html") {
 
     async function importBooks(files) {
       if (!files.length) return;
+      try {
+        validateImportFiles(files);
+      } catch (error) {
+        showImportStatus(error instanceof Error ? error.message : '导入文件超出限制。', true);
+        importInput.value = '';
+        return;
+      }
       isImporting = true;
       importButton.disabled = true;
       showImportStatus('正在读取 ' + files.length + ' 个生词本…', false, true);
@@ -8189,10 +8381,14 @@ function parseWordbook(source, fileName = "wordbook.html") {
           books.push({ fileName: file.name, entries });
           await yieldToMainThread();
         }
-        const validBooks = books.filter((book) => book.entries.length > 0);
+        const processed = await processImportedBooks(books, ({ processedEntries }) => {
+          showImportStatus('正在校验并合并词条，已处理 ' + processedEntries + ' 条…', false, true);
+        });
+        const validBooks = processed.books;
         if (!validBooks.length) throw new Error('未在所选文件中识别到生词表，请选择 HTML 格式的导出生词本。');
 
-        const total = replaceWithImportedWords(validBooks.flatMap((book) => book.entries));
+        WORDS = processed.combinedWords;
+        const total = WORDS.length;
         storeImportedBooks(validBooks);
         renderWordbookLists();
         const remembered = await rememberVocabulary({ fileNames: validBooks.map((book) => book.fileName) });
@@ -9089,7 +9285,14 @@ function parseWordbook(source, fileName = "wordbook.html") {
           if (document.hidden) cancelActiveCardTransition('document-hidden');
         }
       },
-      { target: window, type: 'pagehide', listener: () => cancelActiveCardTransition('page-hidden') },
+      {
+        target: window,
+        type: 'pagehide',
+        listener: () => {
+          cancelActiveCardTransition('page-hidden');
+          cancelImportTask();
+        }
+      },
       { target: themeButton, type: 'click', listener: () => setTheme(settingsController.toggleTheme()) },
       {
         target: settingsButton,
