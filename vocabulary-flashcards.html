@@ -936,14 +936,6 @@
       gap: 7px;
     }
 
-    .wordbook-option-row {
-      min-width: 0;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 38px;
-      align-items: stretch;
-      gap: 6px;
-    }
-
     .wordbook-option {
       width: 100%;
       min-width: 0;
@@ -1005,28 +997,35 @@
       white-space: nowrap;
     }
 
-    .wordbook-delete {
-      display: grid;
-      place-items: center;
-      border: 1px solid rgba(105, 142, 174, 0.12);
-      border-radius: 12px;
-      color: #91a3b5;
-      background: rgba(255,255,255,0.72);
+    .study-size-delete {
+      width: 100%;
+      min-height: 38px;
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid rgba(196,84,100,0.14);
+      border-radius: 11px;
+      color: #a86670;
+      background: rgba(255,247,248,0.76);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 680;
       cursor: pointer;
       transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
     }
 
-    .wordbook-delete:hover {
+    .study-size-delete[hidden] { display: none; }
+
+    .study-size-delete:hover {
       color: #c45464;
-      border-color: rgba(196,84,100,0.2);
+      border-color: rgba(196,84,100,0.24);
       background: #fff4f5;
     }
 
-    .wordbook-delete:active { transform: scale(0.94); }
-    .wordbook-delete .icon { width: 17px; height: 17px; }
-      -webkit-tap-highlight-color: transparent;
-      transition: opacity 180ms ease, transform 160ms ease;
-    }
+    .study-size-delete:active { transform: scale(0.98); }
+    .study-size-delete .icon { width: 16px; height: 16px; }
 
     .nav-button::before,
     .nav-button::after {
@@ -1679,6 +1678,10 @@
           <button class="study-size-step" id="studySizeIncrease" type="button" aria-label="增加每组词数">+</button>
           <button class="study-size-apply" id="studySizeApply" type="button">确定</button>
         </div>
+        <button class="study-size-delete" id="studySizeDelete" type="button" hidden>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 3h6l1 4H8l1-4Z"></path><path d="M6.5 7l1 14h9l1-14"></path><path d="M10 11v6M14 11v6"></path></svg>
+          <span>删除这个单词本</span>
+        </button>
       </div>
       <button class="settings-action" id="shuffleButton" type="button" aria-label="随机重排" title="重新随机排序（R）">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5"></path><path d="M4 20 21 3"></path><path d="M21 16v5h-5"></path><path d="m15 15 6 6"></path><path d="M4 4l5 5"></path></svg>
@@ -2002,6 +2005,7 @@
     const studySizeDecrease = document.getElementById('studySizeDecrease');
     const studySizeIncrease = document.getElementById('studySizeIncrease');
     const studySizeApply = document.getElementById('studySizeApply');
+    const studySizeDelete = document.getElementById('studySizeDelete');
     const builtInWordbookList = document.getElementById('builtInWordbookList');
     const customWordbookSection = document.getElementById('customWordbookSection');
     const customWordbookList = document.getElementById('customWordbookList');
@@ -2962,30 +2966,18 @@
       return button;
     }
 
-    function createCustomWordbookRow(book, isActive) {
-      const row = document.createElement('div');
-      row.className = 'wordbook-option-row';
-      row.append(createWordbookOption(book, 'custom', isActive));
-
-      const deleteButton = document.createElement('button');
-      deleteButton.className = 'wordbook-delete';
-      deleteButton.type = 'button';
-      deleteButton.dataset.deleteBookId = book.id;
-      deleteButton.setAttribute('aria-label', '删除单词本 ' + book.name);
-      deleteButton.title = '删除“' + book.name + '”';
-      deleteButton.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 3h6l1 4H8l1-4Z"></path><path d="M6.5 7l1 14h9l1-14"></path><path d="M10 11v6M14 11v6"></path></svg>';
-      row.append(deleteButton);
-      return row;
-    }
-
     function createWordbookOptionStack(book, source, isActive) {
       const stack = document.createElement('div');
       stack.className = 'wordbook-option-stack';
       stack.dataset.bookId = book.id;
-      if (source === 'custom') stack.append(createCustomWordbookRow(book, isActive));
-      else stack.append(createWordbookOption(book, source, isActive));
+      stack.append(createWordbookOption(book, source, isActive));
 
       if (isActive && expandedStudyBookId === book.id) {
+        const canDelete = source === 'custom';
+        studySizeDelete.hidden = !canDelete;
+        studySizeDelete.dataset.deleteBookId = canDelete ? book.id : '';
+        studySizeDelete.setAttribute('aria-label', canDelete ? '删除单词本 ' + book.name : '删除当前单词本');
+        studySizeDelete.title = canDelete ? '删除“' + book.name + '”' : '';
         studySizePanel.hidden = false;
         stack.append(studySizePanel);
       }
@@ -2994,6 +2986,8 @@
 
     function renderWordbookLists() {
       studySizePanel.hidden = true;
+      studySizeDelete.hidden = true;
+      studySizeDelete.dataset.deleteBookId = '';
       const builtInFragment = document.createDocumentFragment();
       BUILT_IN_BOOKS.forEach((book) => {
         builtInFragment.append(createWordbookOptionStack(book, 'built-in', book.id === activeBuiltInBookId));
@@ -3136,6 +3130,9 @@
     studySizeDecrease.addEventListener('click', () => stepStudySizeInput(-1));
     studySizeIncrease.addEventListener('click', () => stepStudySizeInput(1));
     studySizeApply.addEventListener('click', applyCustomStudySize);
+    studySizeDelete.addEventListener('click', () => {
+      if (studySizeDelete.dataset.deleteBookId) deleteCustomBook(studySizeDelete.dataset.deleteBookId);
+    });
     studySizeInput.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter') return;
       event.preventDefault();
@@ -3154,14 +3151,7 @@
       }
     }
     builtInWordbookList.addEventListener('click', handleWordbookOptionClick);
-    customWordbookList.addEventListener('click', (event) => {
-      const deleteButton = event.target instanceof Element ? event.target.closest('.wordbook-delete') : null;
-      if (deleteButton instanceof HTMLButtonElement && deleteButton.dataset.deleteBookId) {
-        deleteCustomBook(deleteButton.dataset.deleteBookId);
-        return;
-      }
-      handleWordbookOptionClick(event);
-    });
+    customWordbookList.addEventListener('click', handleWordbookOptionClick);
     cardLayer.addEventListener('click', (event) => {
       if (!(event.target instanceof Element)) return;
       if (event.target.closest('.study-mode-button')) {
