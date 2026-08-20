@@ -4150,6 +4150,59 @@ function parseWordbook(source, fileName = "wordbook.html") {
   },
 );
 </script>
+  <script>(function attachMemoryRefreshPolicy(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaMemoryRefresh = Object.assign(
+      {},
+      root.PidanvocaMemoryRefresh || {},
+      api,
+    );
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createMemoryRefreshPolicyApi() {
+    "use strict";
+
+    const defaultMinimumDelay = 15_000;
+    const defaultMaximumDelay = 5 * 60_000;
+    const dueBoundaryPadding = 250;
+
+    function nextRefreshDelay(
+      now,
+      nextDue,
+      minimumDelay = defaultMinimumDelay,
+      maximumDelay = defaultMaximumDelay,
+    ) {
+      const currentTime = Number(now);
+      const dueTime = Number(nextDue);
+      const minimum = Math.max(0, Number(minimumDelay) || 0);
+      const maximum = Math.max(minimum, Number(maximumDelay) || minimum);
+      const untilNextDue =
+        Number.isFinite(dueTime) && dueTime > currentTime
+          ? dueTime - currentTime + dueBoundaryPadding
+          : maximum;
+      return Math.max(minimum, Math.min(maximum, untilNextDue));
+    }
+
+    function hasSignificantClockRollback(
+      previousTime,
+      currentTime,
+      tolerance = 5 * 60_000,
+    ) {
+      return Number(currentTime) < Number(previousTime) - Number(tolerance);
+    }
+
+    return Object.freeze({
+      defaultMinimumDelay,
+      defaultMaximumDelay,
+      nextRefreshDelay,
+      hasSignificantClockRollback,
+    });
+  },
+);
+</script>
   <script>(function attachDatabase(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -7327,6 +7380,9 @@ function parseWordbook(source, fileName = "wordbook.html") {
     let memorySpellingAccepted = false;
     let memorySpellingAdvanceTimer = 0;
     let memorySummaryToken = 0;
+    let memorySummaryRefreshTimer = 0;
+    let memoryLastClock = Date.now();
+    const memoryOverviewCache = new Map();
       const animationCoordinator = new window.PidanvocaAnimations.AnimationCoordinator(({ state }) => {
         deckStage.dataset.animationState = state;
       });
@@ -7434,6 +7490,8 @@ function parseWordbook(source, fileName = "wordbook.html") {
 
     async function memoryOverview(bookId) {
       if (!bookId) return { records: [], due: [], learned: new Set(), newWords: [] };
+      const cached = memoryOverviewCache.get(bookId);
+      if (cached && cached.expiresAt > Date.now()) return cached.value;
       const now = Date.now();
       const records = memoryStorageAvailable
         ? await memoryCardsForBook(bookId)
@@ -7448,7 +7506,31 @@ function parseWordbook(source, fileName = "wordbook.html") {
       const newWords = due.length >= memoryCore.backlogThreshold
         ? []
         : memoryCore.selectDailyNewWords(WORDS, learned, bookId, memoryCore.localDateKey(new Date()), memoryDailyNew);
-      return { records: relevant, due, learned, newWords };
+      const value = { records: relevant, due, learned, newWords };
+      memoryOverviewCache.set(bookId, { value, expiresAt: now + 30000 });
+      return value;
+    }
+
+    function invalidateMemoryOverview(bookId = null) {
+      if (bookId) memoryOverviewCache.delete(bookId);
+      else memoryOverviewCache.clear();
+    }
+
+    function scheduleMemorySummaryRefresh(nextDue = null) {
+      window.clearTimeout(memorySummaryRefreshTimer);
+      memorySummaryRefreshTimer = 0;
+      if (document.hidden) return;
+      const now = Date.now();
+      const delay = window.PidanvocaMemoryRefresh.nextRefreshDelay(now, nextDue);
+      memorySummaryRefreshTimer = window.setTimeout(() => {
+        const currentTime = Date.now();
+        if (window.PidanvocaMemoryRefresh.hasSignificantClockRollback(memoryLastClock, currentTime)) {
+          showImportStatus('检测到设备时间明显回拨；已有复习时间未被改写，请确认系统时钟。', true);
+        }
+        memoryLastClock = currentTime;
+        invalidateMemoryOverview();
+        refreshMemorySummary();
+      }, delay);
     }
 
     async function refreshMemorySummary() {
@@ -7459,6 +7541,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         memoryButton.disabled = !isReady || memoryModeLoading;
         memoryBadge.hidden = true;
         memoryResetBookButton.disabled = true;
+        scheduleMemorySummaryRefresh();
         return;
       }
       try {
@@ -7475,6 +7558,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         memoryButton.title = memoryIsOpen ? '返回经典模式（Esc）' : overview.due.length + ' 个待复习，' + dailySelection.length + ' 个今日新词';
         memoryButton.disabled = !isReady || memoryModeLoading;
         memoryResetBookButton.disabled = overview.records.length === 0;
+        scheduleMemorySummaryRefresh(nextDue || null);
       } catch {
         if (token !== memorySummaryToken) return;
         memoryStorageAvailable = false;
@@ -7482,6 +7566,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         memoryButton.disabled = !isReady || memoryModeLoading;
         memoryBadge.hidden = true;
         memoryResetBookButton.disabled = true;
+        scheduleMemorySummaryRefresh();
       }
     }
 
@@ -8079,6 +8164,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         } else {
           renderMemoryCard(false);
         }
+        invalidateMemoryOverview(bookId);
         refreshMemorySummary();
       } catch (error) {
         transition.cancel('rating-failed');
@@ -8139,6 +8225,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         syncMemoryRatingButtons();
         syncMemoryUndoButton();
       }
+      invalidateMemoryOverview(activeMemoryBookId());
       refreshMemorySummary();
       showImportStatus('已撤销上次评分');
     }
@@ -8251,6 +8338,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         if (!window.confirm((replace ? '替换会先清空现有全部学习进度。' : '将按更新时间合并进度。') + '\n\n准备导入：' + summary + timeRange + conflictText + '\n是否继续？')) return;
         await reviewRepository.importProgress(payload, { replace });
         invalidateMemorySessionHistory();
+        invalidateMemoryOverview();
         await loadMemorySettings();
         await refreshMemorySummary();
         showImportStatus('已导入 ' + summary);
@@ -8273,12 +8361,14 @@ function parseWordbook(source, fileName = "wordbook.html") {
           affectedCards.forEach((record) => memoryVolatileCards.delete(record.cardId));
           affectedLogs.forEach((record) => memoryVolatileLogs.delete(record.logId));
           invalidateMemorySessionHistory(bookId);
+          invalidateMemoryOverview(bookId);
           await refreshMemorySummary();
           showImportStatus('已重置' + scope + '临时记忆曲线进度');
           return;
         }
         await reviewRepository.resetProgress(bookId);
         invalidateMemorySessionHistory(bookId);
+        invalidateMemoryOverview(bookId);
         if (!bookId) {
           memoryDailyNew = memoryCore.defaultDailyNew;
           memoryDailyNewInput.value = String(memoryDailyNew);
@@ -9413,7 +9503,14 @@ function parseWordbook(source, fileName = "wordbook.html") {
         target: document,
         type: 'visibilitychange',
         listener: () => {
-          if (document.hidden) cancelActiveCardTransition('document-hidden');
+          if (document.hidden) {
+            cancelActiveCardTransition('document-hidden');
+            window.clearTimeout(memorySummaryRefreshTimer);
+            memorySummaryRefreshTimer = 0;
+            return;
+          }
+          invalidateMemoryOverview();
+          refreshMemorySummary();
         }
       },
       {
@@ -9422,6 +9519,8 @@ function parseWordbook(source, fileName = "wordbook.html") {
         listener: () => {
           cancelActiveCardTransition('page-hidden');
           cancelImportTask();
+          window.clearTimeout(memorySummaryRefreshTimer);
+          memorySummaryRefreshTimer = 0;
         }
       },
       { target: themeButton, type: 'click', listener: () => setTheme(settingsController.toggleTheme()) },
@@ -9647,13 +9746,6 @@ function parseWordbook(source, fileName = "wordbook.html") {
       });
     }
     window.addEventListener('load', registerOnlineServiceWorker, { once: true });
-    let memoryLastClock = Date.now();
-    window.setInterval(() => {
-      const now = Date.now();
-      if (now < memoryLastClock - 5 * 60 * 1000) showImportStatus('检测到设备时间明显回拨；已有复习时间未被改写，请确认系统时钟。', true);
-      memoryLastClock = now;
-      refreshMemorySummary();
-    }, 60 * 1000);
   </script>
 </body>
 </html>

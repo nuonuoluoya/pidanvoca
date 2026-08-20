@@ -83,6 +83,13 @@ const memoryReviewControllerPath = path.join(
   "memory-review",
   "controller.js",
 );
+const memoryRefreshPolicyPath = path.join(
+  __dirname,
+  "src",
+  "features",
+  "memory-review",
+  "refresh-policy.js",
+);
 const databaseModulePath = path.join(
   __dirname,
   "src",
@@ -344,6 +351,10 @@ const embeddedReviewSession = fs
   .replace(/<\/script/gi, "<\\/script");
 const embeddedMemoryReviewController = fs
   .readFileSync(memoryReviewControllerPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedMemoryRefreshPolicy = fs
+  .readFileSync(memoryRefreshPolicyPath, "utf8")
   .replace(/[ \t]+$/gm, "")
   .replace(/<\/script/gi, "<\\/script");
 const embeddedDatabaseModule = fs
@@ -3075,6 +3086,7 @@ const output = `<!doctype html>
   <script>${embeddedClassicDeckController}</script>
   <script>${embeddedReviewSession}</script>
   <script>${embeddedMemoryReviewController}</script>
+  <script>${embeddedMemoryRefreshPolicy}</script>
   <script>${embeddedDatabaseModule}</script>
   <script>${embeddedReviewRepository}</script>
   <script>${embeddedWordbookRepository}</script>
@@ -3488,6 +3500,9 @@ const output = `<!doctype html>
     let memorySpellingAccepted = false;
     let memorySpellingAdvanceTimer = 0;
     let memorySummaryToken = 0;
+    let memorySummaryRefreshTimer = 0;
+    let memoryLastClock = Date.now();
+    const memoryOverviewCache = new Map();
       const animationCoordinator = new window.PidanvocaAnimations.AnimationCoordinator(({ state }) => {
         deckStage.dataset.animationState = state;
       });
@@ -3595,6 +3610,8 @@ const output = `<!doctype html>
 
     async function memoryOverview(bookId) {
       if (!bookId) return { records: [], due: [], learned: new Set(), newWords: [] };
+      const cached = memoryOverviewCache.get(bookId);
+      if (cached && cached.expiresAt > Date.now()) return cached.value;
       const now = Date.now();
       const records = memoryStorageAvailable
         ? await memoryCardsForBook(bookId)
@@ -3609,7 +3626,31 @@ const output = `<!doctype html>
       const newWords = due.length >= memoryCore.backlogThreshold
         ? []
         : memoryCore.selectDailyNewWords(WORDS, learned, bookId, memoryCore.localDateKey(new Date()), memoryDailyNew);
-      return { records: relevant, due, learned, newWords };
+      const value = { records: relevant, due, learned, newWords };
+      memoryOverviewCache.set(bookId, { value, expiresAt: now + 30000 });
+      return value;
+    }
+
+    function invalidateMemoryOverview(bookId = null) {
+      if (bookId) memoryOverviewCache.delete(bookId);
+      else memoryOverviewCache.clear();
+    }
+
+    function scheduleMemorySummaryRefresh(nextDue = null) {
+      window.clearTimeout(memorySummaryRefreshTimer);
+      memorySummaryRefreshTimer = 0;
+      if (document.hidden) return;
+      const now = Date.now();
+      const delay = window.PidanvocaMemoryRefresh.nextRefreshDelay(now, nextDue);
+      memorySummaryRefreshTimer = window.setTimeout(() => {
+        const currentTime = Date.now();
+        if (window.PidanvocaMemoryRefresh.hasSignificantClockRollback(memoryLastClock, currentTime)) {
+          showImportStatus('检测到设备时间明显回拨；已有复习时间未被改写，请确认系统时钟。', true);
+        }
+        memoryLastClock = currentTime;
+        invalidateMemoryOverview();
+        refreshMemorySummary();
+      }, delay);
     }
 
     async function refreshMemorySummary() {
@@ -3620,6 +3661,7 @@ const output = `<!doctype html>
         memoryButton.disabled = !isReady || memoryModeLoading;
         memoryBadge.hidden = true;
         memoryResetBookButton.disabled = true;
+        scheduleMemorySummaryRefresh();
         return;
       }
       try {
@@ -3636,6 +3678,7 @@ const output = `<!doctype html>
         memoryButton.title = memoryIsOpen ? '返回经典模式（Esc）' : overview.due.length + ' 个待复习，' + dailySelection.length + ' 个今日新词';
         memoryButton.disabled = !isReady || memoryModeLoading;
         memoryResetBookButton.disabled = overview.records.length === 0;
+        scheduleMemorySummaryRefresh(nextDue || null);
       } catch {
         if (token !== memorySummaryToken) return;
         memoryStorageAvailable = false;
@@ -3643,6 +3686,7 @@ const output = `<!doctype html>
         memoryButton.disabled = !isReady || memoryModeLoading;
         memoryBadge.hidden = true;
         memoryResetBookButton.disabled = true;
+        scheduleMemorySummaryRefresh();
       }
     }
 
@@ -4240,6 +4284,7 @@ const output = `<!doctype html>
         } else {
           renderMemoryCard(false);
         }
+        invalidateMemoryOverview(bookId);
         refreshMemorySummary();
       } catch (error) {
         transition.cancel('rating-failed');
@@ -4300,6 +4345,7 @@ const output = `<!doctype html>
         syncMemoryRatingButtons();
         syncMemoryUndoButton();
       }
+      invalidateMemoryOverview(activeMemoryBookId());
       refreshMemorySummary();
       showImportStatus('已撤销上次评分');
     }
@@ -4412,6 +4458,7 @@ const output = `<!doctype html>
         if (!window.confirm((replace ? '替换会先清空现有全部学习进度。' : '将按更新时间合并进度。') + '\\n\\n准备导入：' + summary + timeRange + conflictText + '\\n是否继续？')) return;
         await reviewRepository.importProgress(payload, { replace });
         invalidateMemorySessionHistory();
+        invalidateMemoryOverview();
         await loadMemorySettings();
         await refreshMemorySummary();
         showImportStatus('已导入 ' + summary);
@@ -4434,12 +4481,14 @@ const output = `<!doctype html>
           affectedCards.forEach((record) => memoryVolatileCards.delete(record.cardId));
           affectedLogs.forEach((record) => memoryVolatileLogs.delete(record.logId));
           invalidateMemorySessionHistory(bookId);
+          invalidateMemoryOverview(bookId);
           await refreshMemorySummary();
           showImportStatus('已重置' + scope + '临时记忆曲线进度');
           return;
         }
         await reviewRepository.resetProgress(bookId);
         invalidateMemorySessionHistory(bookId);
+        invalidateMemoryOverview(bookId);
         if (!bookId) {
           memoryDailyNew = memoryCore.defaultDailyNew;
           memoryDailyNewInput.value = String(memoryDailyNew);
@@ -5574,7 +5623,14 @@ const output = `<!doctype html>
         target: document,
         type: 'visibilitychange',
         listener: () => {
-          if (document.hidden) cancelActiveCardTransition('document-hidden');
+          if (document.hidden) {
+            cancelActiveCardTransition('document-hidden');
+            window.clearTimeout(memorySummaryRefreshTimer);
+            memorySummaryRefreshTimer = 0;
+            return;
+          }
+          invalidateMemoryOverview();
+          refreshMemorySummary();
         }
       },
       {
@@ -5583,6 +5639,8 @@ const output = `<!doctype html>
         listener: () => {
           cancelActiveCardTransition('page-hidden');
           cancelImportTask();
+          window.clearTimeout(memorySummaryRefreshTimer);
+          memorySummaryRefreshTimer = 0;
         }
       },
       { target: themeButton, type: 'click', listener: () => setTheme(settingsController.toggleTheme()) },
@@ -5808,13 +5866,6 @@ const output = `<!doctype html>
       });
     }
     window.addEventListener('load', registerOnlineServiceWorker, { once: true });
-    let memoryLastClock = Date.now();
-    window.setInterval(() => {
-      const now = Date.now();
-      if (now < memoryLastClock - 5 * 60 * 1000) showImportStatus('检测到设备时间明显回拨；已有复习时间未被改写，请确认系统时钟。', true);
-      memoryLastClock = now;
-      refreshMemorySummary();
-    }, 60 * 1000);
   </script>
 </body>
 </html>`;
