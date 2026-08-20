@@ -442,6 +442,7 @@ const output = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#edf4fc">
   <title>随机单词本</title>
   <script>
@@ -5935,6 +5936,46 @@ const webOutput = output
     `const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};`,
     `const BUILT_IN_BOOKS = ${embeddedOnlineBuiltInBooks};`,
   );
+
+function inlineHashes(html, tagName) {
+  const pattern = new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`, "gi");
+  return Array.from(html.matchAll(pattern), (match) => {
+    const digest = crypto
+      .createHash("sha256")
+      .update(match[1], "utf8")
+      .digest("base64");
+    return `'sha256-${digest}'`;
+  });
+}
+
+function withSecurityPolicy(html) {
+  const scriptHashes = inlineHashes(html, "script");
+  const styleHashes = inlineHashes(html, "style");
+  const policy = [
+    "default-src 'self'",
+    `script-src 'self' ${scriptHashes.join(" ")}`,
+    "script-src-attr 'none'",
+    `style-src-elem 'self' ${styleHashes.join(" ")}`,
+    "style-src-attr 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "worker-src 'self' blob:",
+    "child-src 'self' blob:",
+    "object-src 'none'",
+    "frame-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; ");
+  const referrerMeta = '<meta name="referrer" content="no-referrer">';
+  return html.replace(
+    referrerMeta,
+    `${referrerMeta}\n  <meta http-equiv="Content-Security-Policy" content="${policy}">`,
+  );
+}
+
+const securedOfflineOutput = withSecurityPolicy(output);
+const securedWebOutput = withSecurityPolicy(webOutput);
 const defaultBookArtifact = bookArtifacts.find(
   (artifact) => artifact.book.id === defaultBuiltInBook.id,
 );
@@ -5978,9 +6019,9 @@ fs.writeFileSync(
   manifestJson,
   "utf8",
 );
-fs.writeFileSync(outputPath, output, "utf8");
-fs.writeFileSync(offlineOutputPath, output, "utf8");
-fs.writeFileSync(webOutputPath, webOutput, "utf8");
+fs.writeFileSync(outputPath, securedOfflineOutput, "utf8");
+fs.writeFileSync(offlineOutputPath, securedOfflineOutput, "utf8");
+fs.writeFileSync(webOutputPath, securedWebOutput, "utf8");
 fs.writeFileSync(webServiceWorkerPath, webServiceWorker, "utf8");
 console.log(
   `已生成在线版与单文件离线版，内置 ${builtInBooks.length} 个单词本、我的单词本 ${personalBooks.length} 个，共 ${builtInBooks.concat(personalBooks).reduce((total, book) => total + book.words.length, 0)} 个词条。`,

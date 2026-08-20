@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -35,6 +36,8 @@ test("GitHub Pages 入口指向在线版并保留查询参数与哈希", () => {
   assert.match(html, /url=\.\/dist\/web\/index\.html/);
   assert.match(html, /window\.location\.search\s*\+\s*window\.location\.hash/);
   assert.match(html, /href="\.\/dist\/web\/index\.html"/);
+  assert.match(html, /Content-Security-Policy/);
+  assert.match(html, /name="referrer" content="no-referrer"/);
 });
 
 test("双构建分别生成按需在线壳与自包含离线文件", () => {
@@ -77,4 +80,44 @@ test("在线与离线产物保持在已记录的体积预算内", () => {
     fs.statSync(offlineHtmlPath).size <=
       performanceBudgets.artifactBytes.offlineHtml,
   );
+});
+
+function securityPolicy(html) {
+  const match = html.match(
+    /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/,
+  );
+  assert.ok(match, "missing Content-Security-Policy meta tag");
+  return match[1];
+}
+
+function inlineHashes(html, tagName) {
+  const pattern = new RegExp(
+    `<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`,
+    "gi",
+  );
+  return Array.from(html.matchAll(pattern), (match) =>
+    crypto.createHash("sha256").update(match[1], "utf8").digest("base64"),
+  );
+}
+
+test("双产物使用哈希 CSP 限制内联脚本并禁用危险脚本属性", () => {
+  [webHtmlPath, offlineHtmlPath].forEach((htmlPath) => {
+    const html = fs.readFileSync(htmlPath, "utf8");
+    const policy = securityPolicy(html);
+    assert.match(html, /<meta name="referrer" content="no-referrer">/);
+    assert.match(policy, /script-src 'self' 'sha256-/);
+    assert.match(policy, /script-src-attr 'none'/);
+    assert.match(policy, /worker-src 'self' blob:/);
+    assert.match(policy, /object-src 'none'/);
+    assert.doesNotMatch(
+      policy.match(/script-src [^;]+/)?.[0] || "",
+      /unsafe-inline|unsafe-eval/,
+    );
+    inlineHashes(html, "script").forEach((hash) => {
+      assert.ok(policy.includes(`'sha256-${hash}'`));
+    });
+    inlineHashes(html, "style").forEach((hash) => {
+      assert.ok(policy.includes(`'sha256-${hash}'`));
+    });
+  });
 });
