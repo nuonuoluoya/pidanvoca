@@ -3736,6 +3736,102 @@ function parseWordbook(source, fileName = "wordbook.html") {
         );
       }
 
+      async function exportProgress() {
+        return databaseClient.runTransaction(
+          [stores.reviewCards, stores.reviewLogs, stores.reviewMeta],
+          "readonly",
+          async (transaction) => {
+            const cardStore = transaction.objectStore(stores.reviewCards);
+            const logStore = transaction.objectStore(stores.reviewLogs);
+            const metaStore = transaction.objectStore(stores.reviewMeta);
+            const [reviewCards, reviewLogs, metaKeys, metaValues] =
+              await Promise.all([
+                storage.requestResult(cardStore.getAll()),
+                storage.requestResult(logStore.getAll()),
+                storage.requestResult(metaStore.getAllKeys()),
+                storage.requestResult(metaStore.getAll()),
+              ]);
+            return {
+              reviewCards,
+              reviewLogs,
+              metaEntries: metaKeys.map((key, index) => [
+                key,
+                metaValues[index],
+              ]),
+            };
+          },
+        );
+      }
+
+      async function importProgress(payload, { replace = false } = {}) {
+        return databaseClient.runTransaction(
+          [stores.reviewCards, stores.reviewLogs, stores.reviewMeta],
+          "readwrite",
+          async (transaction) => {
+            const cardStore = transaction.objectStore(stores.reviewCards);
+            const logStore = transaction.objectStore(stores.reviewLogs);
+            const metaStore = transaction.objectStore(stores.reviewMeta);
+            if (replace) {
+              cardStore.clear();
+              logStore.clear();
+              metaStore.clear();
+            }
+            const existingCards = replace
+              ? []
+              : await storage.requestResult(cardStore.getAll());
+            const existingById = new Map(
+              existingCards.map((card) => [card.cardId, card]),
+            );
+            payload.reviewCards.forEach((card) => {
+              const existing = existingById.get(card.cardId);
+              if (
+                replace ||
+                !existing ||
+                Number(card.updatedAt) >= Number(existing.updatedAt)
+              ) {
+                cardStore.put(card);
+              }
+            });
+            payload.reviewLogs.forEach((log) => logStore.put(log));
+            payload.metaEntries.forEach(([key, value]) =>
+              metaStore.put(value, key),
+            );
+          },
+        );
+      }
+
+      async function resetProgress(bookId = null) {
+        return databaseClient.runTransaction(
+          [stores.reviewCards, stores.reviewLogs, stores.reviewMeta],
+          "readwrite",
+          async (transaction) => {
+            const cardStore = transaction.objectStore(stores.reviewCards);
+            const logStore = transaction.objectStore(stores.reviewLogs);
+            const metaStore = transaction.objectStore(stores.reviewMeta);
+            if (!bookId) {
+              cardStore.clear();
+              logStore.clear();
+              metaStore.clear();
+              return;
+            }
+            const [cards, logs, metaKeys] = await Promise.all([
+              storage.requestResult(cardStore.getAll()),
+              storage.requestResult(logStore.getAll()),
+              storage.requestResult(metaStore.getAllKeys()),
+            ]);
+            cards
+              .filter((record) => record.bookId === bookId)
+              .forEach((record) => cardStore.delete(record.cardId));
+            logs
+              .filter((record) => record.bookId === bookId)
+              .forEach((record) => logStore.delete(record.logId));
+            metaKeys
+              .filter((key) => String(key).startsWith(`daily:${bookId}:`))
+              .forEach((key) => metaStore.delete(key));
+          },
+        );
+      }
+
       return Object.freeze({
         readAll,
         readMeta,
@@ -3744,6 +3840,9 @@ function parseWordbook(source, fileName = "wordbook.html") {
         dueCardsForBook,
         saveReview,
         undoReview,
+        exportProgress,
+        importProgress,
+        resetProgress,
       });
     }
 
@@ -5812,11 +5911,9 @@ function parseWordbook(source, fileName = "wordbook.html") {
     const presetStudySizes = [10, 20, 30, 50, 100];
     const vocabularyDatabaseName = 'random-vocabulary';
     const vocabularyDatabaseVersion = 2;
-    const vocabularyDatabaseStore = 'state';
     const vocabularyDatabaseRecord = 'last-import';
     const memoryCardStore = 'reviewCards';
     const memoryLogStore = 'reviewLogs';
-    const memoryMetaStore = 'reviewMeta';
     const memorySchedulerVersion = 'FSRS-6';
     const memoryPackageVersion = "5.4.1";
     const memoryParameterVersion = 'default-0.90-v1';
@@ -5980,24 +6077,12 @@ function parseWordbook(source, fileName = "wordbook.html") {
       };
     }
 
-    function openVocabularyDatabase() {
-      return vocabularyDatabase.open();
-    }
-
     async function readRememberedPayload() {
       return wordbookRepository.readLastImport();
     }
 
     async function writeRememberedPayload(payload) {
       return wordbookRepository.writeLastImport(payload);
-    }
-
-    function memoryRequest(request) {
-      return window.PidanvocaStorage.requestResult(request);
-    }
-
-    function memoryTransactionDone(transaction) {
-      return window.PidanvocaStorage.transactionDone(transaction);
     }
 
     async function memoryReadAll(storeName) {
@@ -7069,17 +7154,14 @@ function parseWordbook(source, fileName = "wordbook.html") {
 
     async function exportMemoryProgress() {
       try {
-        const [reviewCards, reviewLogs, metaValues] = memoryStorageAvailable ? await Promise.all([
-          memoryReadAll(memoryCardStore), memoryReadAll(memoryLogStore),
-          (async () => {
-            const database = await openVocabularyDatabase();
-            const transaction = database.transaction(memoryMetaStore, 'readonly');
-            const store = transaction.objectStore(memoryMetaStore);
-            const keys = await memoryRequest(store.getAllKeys());
-            const values = await memoryRequest(store.getAll());
-            return keys.map((key, index) => [key, values[index]]);
-          })()
-        ]) : [Array.from(memoryVolatileCards.values()), Array.from(memoryVolatileLogs.values()), [['memory-settings', { dailyNew: memoryDailyNew }]]];
+        const storedProgress = memoryStorageAvailable
+          ? await reviewRepository.exportProgress()
+          : {
+              reviewCards: Array.from(memoryVolatileCards.values()),
+              reviewLogs: Array.from(memoryVolatileLogs.values()),
+              metaEntries: [['memory-settings', { dailyNew: memoryDailyNew }]]
+            };
+        const { reviewCards, reviewLogs, metaEntries: metaValues } = storedProgress;
         const bookIds = new Set(reviewCards.map((card) => card.bookId));
         const books = BUILT_IN_BOOKS.concat(customBooks).filter((book) => bookIds.has(book.id)).map((book) => ({ id: book.id, name: book.name, fileName: book.fileName, wordCount: book.words.length }));
         const payload = {
@@ -7147,27 +7229,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         const timeRange = reviewTimes.length ? '\n记录时间：' + new Date(reviewTimes[0]).toLocaleString() + ' 至 ' + new Date(reviewTimes[reviewTimes.length - 1]).toLocaleString() : '';
         const conflictText = '\n卡片冲突 ' + conflicts + ' 个；重复日志 ' + duplicateLogs + ' 条。';
         if (!window.confirm((replace ? '替换会先清空现有全部学习进度。' : '将按更新时间合并进度。') + '\n\n准备导入：' + summary + timeRange + conflictText + '\n是否继续？')) return;
-        const database = await openVocabularyDatabase();
-        const transaction = database.transaction([memoryCardStore, memoryLogStore, memoryMetaStore], 'readwrite');
-        const cardStore = transaction.objectStore(memoryCardStore);
-        const logStore = transaction.objectStore(memoryLogStore);
-        const metaStore = transaction.objectStore(memoryMetaStore);
-        if (replace) {
-          cardStore.clear();
-          logStore.clear();
-          metaStore.clear();
-        }
-        for (const card of payload.reviewCards) {
-          if (!card || typeof card.cardId !== 'string' || typeof card.bookId !== 'string') continue;
-          if (replace) cardStore.put(card);
-          else {
-            const existing = await memoryRequest(cardStore.get(card.cardId));
-            if (!existing || Number(card.updatedAt) >= Number(existing.updatedAt)) cardStore.put(card);
-          }
-        }
-        payload.reviewLogs.forEach((log) => { if (log && typeof log.logId === 'string') logStore.put(log); });
-        payload.metaEntries.forEach((entry) => { if (Array.isArray(entry) && entry.length === 2) metaStore.put(entry[1], entry[0]); });
-        await memoryTransactionDone(transaction);
+        await reviewRepository.importProgress(payload, { replace });
         invalidateMemorySessionHistory();
         await loadMemorySettings();
         await refreshMemorySummary();
@@ -7195,24 +7257,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
           showImportStatus('已重置' + scope + '临时记忆曲线进度');
           return;
         }
-        const database = await openVocabularyDatabase();
-        const transaction = database.transaction([memoryCardStore, memoryLogStore, memoryMetaStore], 'readwrite');
-        const cardStore = transaction.objectStore(memoryCardStore);
-        const logStore = transaction.objectStore(memoryLogStore);
-        const metaStore = transaction.objectStore(memoryMetaStore);
-        if (!bookId) {
-          cardStore.clear();
-          logStore.clear();
-          metaStore.clear();
-        } else {
-          const cards = await memoryRequest(cardStore.getAll());
-          const logs = await memoryRequest(logStore.getAll());
-          const metaKeys = await memoryRequest(metaStore.getAllKeys());
-          cards.filter((record) => record.bookId === bookId).forEach((record) => cardStore.delete(record.cardId));
-          logs.filter((record) => record.bookId === bookId).forEach((record) => logStore.delete(record.logId));
-          metaKeys.filter((key) => String(key).startsWith('daily:' + bookId + ':')).forEach((key) => metaStore.delete(key));
-        }
-        await memoryTransactionDone(transaction);
+        await reviewRepository.resetProgress(bookId);
         invalidateMemorySessionHistory(bookId);
         if (!bookId) {
           memoryDailyNew = memoryCore.defaultDailyNew;

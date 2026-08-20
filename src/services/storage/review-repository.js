@@ -101,6 +101,102 @@
         );
       }
 
+      async function exportProgress() {
+        return databaseClient.runTransaction(
+          [stores.reviewCards, stores.reviewLogs, stores.reviewMeta],
+          "readonly",
+          async (transaction) => {
+            const cardStore = transaction.objectStore(stores.reviewCards);
+            const logStore = transaction.objectStore(stores.reviewLogs);
+            const metaStore = transaction.objectStore(stores.reviewMeta);
+            const [reviewCards, reviewLogs, metaKeys, metaValues] =
+              await Promise.all([
+                storage.requestResult(cardStore.getAll()),
+                storage.requestResult(logStore.getAll()),
+                storage.requestResult(metaStore.getAllKeys()),
+                storage.requestResult(metaStore.getAll()),
+              ]);
+            return {
+              reviewCards,
+              reviewLogs,
+              metaEntries: metaKeys.map((key, index) => [
+                key,
+                metaValues[index],
+              ]),
+            };
+          },
+        );
+      }
+
+      async function importProgress(payload, { replace = false } = {}) {
+        return databaseClient.runTransaction(
+          [stores.reviewCards, stores.reviewLogs, stores.reviewMeta],
+          "readwrite",
+          async (transaction) => {
+            const cardStore = transaction.objectStore(stores.reviewCards);
+            const logStore = transaction.objectStore(stores.reviewLogs);
+            const metaStore = transaction.objectStore(stores.reviewMeta);
+            if (replace) {
+              cardStore.clear();
+              logStore.clear();
+              metaStore.clear();
+            }
+            const existingCards = replace
+              ? []
+              : await storage.requestResult(cardStore.getAll());
+            const existingById = new Map(
+              existingCards.map((card) => [card.cardId, card]),
+            );
+            payload.reviewCards.forEach((card) => {
+              const existing = existingById.get(card.cardId);
+              if (
+                replace ||
+                !existing ||
+                Number(card.updatedAt) >= Number(existing.updatedAt)
+              ) {
+                cardStore.put(card);
+              }
+            });
+            payload.reviewLogs.forEach((log) => logStore.put(log));
+            payload.metaEntries.forEach(([key, value]) =>
+              metaStore.put(value, key),
+            );
+          },
+        );
+      }
+
+      async function resetProgress(bookId = null) {
+        return databaseClient.runTransaction(
+          [stores.reviewCards, stores.reviewLogs, stores.reviewMeta],
+          "readwrite",
+          async (transaction) => {
+            const cardStore = transaction.objectStore(stores.reviewCards);
+            const logStore = transaction.objectStore(stores.reviewLogs);
+            const metaStore = transaction.objectStore(stores.reviewMeta);
+            if (!bookId) {
+              cardStore.clear();
+              logStore.clear();
+              metaStore.clear();
+              return;
+            }
+            const [cards, logs, metaKeys] = await Promise.all([
+              storage.requestResult(cardStore.getAll()),
+              storage.requestResult(logStore.getAll()),
+              storage.requestResult(metaStore.getAllKeys()),
+            ]);
+            cards
+              .filter((record) => record.bookId === bookId)
+              .forEach((record) => cardStore.delete(record.cardId));
+            logs
+              .filter((record) => record.bookId === bookId)
+              .forEach((record) => logStore.delete(record.logId));
+            metaKeys
+              .filter((key) => String(key).startsWith(`daily:${bookId}:`))
+              .forEach((key) => metaStore.delete(key));
+          },
+        );
+      }
+
       return Object.freeze({
         readAll,
         readMeta,
@@ -109,6 +205,9 @@
         dueCardsForBook,
         saveReview,
         undoReview,
+        exportProgress,
+        importProgress,
+        resetProgress,
       });
     }
 
