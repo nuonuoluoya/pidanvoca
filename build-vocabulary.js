@@ -11,6 +11,7 @@ const animationCoordinatorPath = path.join(__dirname, 'src', 'animations', 'anim
 const animationGeometryPath = path.join(__dirname, 'src', 'animations', 'geometry.js');
 const cardTransitionPath = path.join(__dirname, 'src', 'animations', 'card-transition.js');
 const wordbookParserPath = path.join(__dirname, 'src', 'features', 'wordbooks', 'parser.js');
+const classicDeckModelPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'model.js');
 const fsrsEntryPath = require.resolve('ts-fsrs');
 const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
 const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
@@ -92,6 +93,7 @@ const embeddedAnimationCoordinator = fs.readFileSync(animationCoordinatorPath, '
 const embeddedAnimationGeometry = fs.readFileSync(animationGeometryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedCardTransition = fs.readFileSync(cardTransitionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedWordbookParser = fs.readFileSync(wordbookParserPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedClassicDeckModel = fs.readFileSync(classicDeckModelPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
@@ -2776,6 +2778,7 @@ const output = `<!doctype html>
   <script>${embeddedAnimationGeometry}</script>
   <script>${embeddedCardTransition}</script>
   <script>${embeddedWordbookParser}</script>
+  <script>${embeddedClassicDeckModel}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
@@ -4490,12 +4493,7 @@ const output = `<!doctype html>
     }
 
     function createDeck() {
-      const nextDeck = Array.from({ length: WORDS.length }, (_, index) => index);
-      for (let index = nextDeck.length - 1; index > 0; index -= 1) {
-        const swapIndex = randomIndex(index + 1);
-        [nextDeck[index], nextDeck[swapIndex]] = [nextDeck[swapIndex], nextDeck[index]];
-      }
-      return nextDeck;
+      return window.PidanvocaClassicDeck.createShuffledDeck(WORDS.length, randomIndex);
     }
 
     function cancelSpellingAdvance() {
@@ -4504,7 +4502,7 @@ const output = `<!doctype html>
     }
 
     function normalizeSpelling(value) {
-      return String(value).trim().toLocaleLowerCase('en-US').replace(/\\s+/g, ' ');
+      return window.PidanvocaClassicDeck.normalizeSpelling(value);
     }
 
     function appendMeaningText(element, value) {
@@ -4604,8 +4602,7 @@ const output = `<!doctype html>
     }
 
     function createStudyGroup(start, requestedSize = studySize) {
-      const end = requestedSize === Infinity ? deck.length : Math.min(deck.length, start + requestedSize);
-      return { start, end, requestedSize };
+      return window.PidanvocaClassicDeck.createStudyGroup(deck.length, start, requestedSize);
     }
 
     function currentStudyGroup() {
@@ -4613,15 +4610,11 @@ const output = `<!doctype html>
     }
 
     function studyGroupForPosition(deckPosition) {
-      return studyGroups.find((group) => deckPosition >= group.start && deckPosition < group.end) || currentStudyGroup();
+      return window.PidanvocaClassicDeck.studyGroupForPosition(studyGroups, studyGroupIndex, deckPosition);
     }
 
     function studyProgressFor(deckPosition) {
-      const group = studyGroupForPosition(deckPosition) || { start: 0, end: deck.length };
-      const total = Math.max(1, group.end - group.start);
-      const current = Math.min(total, Math.max(1, deckPosition - group.start + 1));
-      const progressValue = total <= 1 ? 100 : (current - 1) / (total - 1) * 100;
-      return { group, current, total, progressValue };
+      return window.PidanvocaClassicDeck.studyProgress(deck.length, studyGroups, studyGroupIndex, deckPosition);
     }
 
     function updateStudySizeControls() {
