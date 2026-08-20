@@ -12,6 +12,7 @@ const animationGeometryPath = path.join(__dirname, 'src', 'animations', 'geometr
 const cardTransitionPath = path.join(__dirname, 'src', 'animations', 'card-transition.js');
 const wordbookParserPath = path.join(__dirname, 'src', 'features', 'wordbooks', 'parser.js');
 const classicDeckModelPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'model.js');
+const classicDeckControllerPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'controller.js');
 const reviewSessionPath = path.join(__dirname, 'src', 'features', 'memory-review', 'review-session.js');
 const databaseModulePath = path.join(__dirname, 'src', 'services', 'storage', 'database.js');
 const reviewRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'review-repository.js');
@@ -99,6 +100,7 @@ const embeddedAnimationGeometry = fs.readFileSync(animationGeometryPath, 'utf8')
 const embeddedCardTransition = fs.readFileSync(cardTransitionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedWordbookParser = fs.readFileSync(wordbookParserPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedClassicDeckModel = fs.readFileSync(classicDeckModelPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedClassicDeckController = fs.readFileSync(classicDeckControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedReviewSession = fs.readFileSync(reviewSessionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedDatabaseModule = fs.readFileSync(databaseModulePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedReviewRepository = fs.readFileSync(reviewRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
@@ -2789,6 +2791,7 @@ const output = `<!doctype html>
   <script>${embeddedCardTransition}</script>
   <script>${embeddedWordbookParser}</script>
   <script>${embeddedClassicDeckModel}</script>
+  <script>${embeddedClassicDeckController}</script>
   <script>${embeddedReviewSession}</script>
   <script>${embeddedDatabaseModule}</script>
   <script>${embeddedReviewRepository}</script>
@@ -3133,13 +3136,11 @@ const output = `<!doctype html>
     shuffleButton.disabled = true;
     memoryButton.disabled = true;
 
-    let deck = [];
-    let position = 0;
+    const classicDeckController = new window.PidanvocaClassicDeck.ClassicDeckController();
+    classicDeckController.installLegacyBindings(window);
     const legacyStudySizePreference = loadStudySizePreference();
     let studySizePreferences = loadStudySizePreferences();
     let studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
-    let studyGroups = [];
-    let studyGroupIndex = 0;
     let expandedStudyBookId = null;
     let isStudyCompleteOpen = false;
     let statusTimer = 0;
@@ -3148,7 +3149,6 @@ const output = `<!doctype html>
     let isImporting = false;
     let spellingAdvanceTimer = 0;
     let studyCompleteTimer = 0;
-    let studyMode = 'full';
     let memoryDailyNew = memoryCore.defaultDailyNew;
     let memoryStorageAvailable = true;
     const memoryVolatileCards = new Map();
@@ -3742,6 +3742,7 @@ const output = `<!doctype html>
       memoryBackdrop.classList.remove('is-transitioning', 'is-card-advancing', 'is-undo-returning');
       cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing');
       isTransitioning = false;
+      classicDeckController.cancelMove();
       if (memoryIsOpen) renderMemoryCard(false);
       renderStable();
       return true;
@@ -4876,24 +4877,15 @@ const output = `<!doctype html>
     function moveDeck(direction) {
       if (isTransitioning || isStudyCompleteOpen || !animationCoordinator.isIdle) return;
       cancelSpellingAdvance();
-      let target = position + direction;
-      if (target < 0) return;
-
-      const group = currentStudyGroup();
-      if (direction > 0 && group && target >= group.end) {
-        if (studyGroupIndex < studyGroups.length - 1) studyGroupIndex += 1;
-        else {
-          showStudyComplete();
-          return;
-        }
-      } else if (direction < 0 && group && target < group.start && studyGroupIndex > 0) {
-        studyGroupIndex -= 1;
-      }
-      if (target >= deck.length) return showStudyComplete();
+      const movePlan = classicDeckController.planMove(direction);
+      if (movePlan.type === 'blocked') return;
+      if (movePlan.type === 'complete') return showStudyComplete();
+      classicDeckController.prepareMove(movePlan);
+      const target = movePlan.target;
 
       if (reducedMotion.matches) {
         if (direction > 0) exitPointFor(position);
-        position = target;
+        classicDeckController.commitMove(movePlan);
         renderStable();
         return;
       }
@@ -4942,7 +4934,7 @@ const output = `<!doctype html>
           syncChrome();
           deckTransitionFinished.then(() => {
             if (!transition.isActive()) return;
-            position = target;
+            classicDeckController.commitMove(movePlan);
             transition.finish();
             renderStable();
           });
@@ -4956,10 +4948,7 @@ const output = `<!doctype html>
       isTransitioning = false;
       exitPoints.clear();
       cardLayer.replaceChildren();
-      deck = createDeck();
-      position = 0;
-      studyGroups = deck.length ? [createStudyGroup(0, studySize)] : [];
-      studyGroupIndex = 0;
+      classicDeckController.reset(createDeck(), studySize);
       updateStudySizeControls();
       renderStable();
     }
