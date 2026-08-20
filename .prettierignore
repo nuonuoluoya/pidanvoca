@@ -1,0 +1,7 @@
+node_modules/
+design-concepts/
+wordbooks/
+build-vocabulary.js
+vocabulary-flashcards.html
+README.md
+package-lock.json

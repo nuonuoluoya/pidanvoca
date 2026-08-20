@@ -2944,7 +2944,7 @@ const output = `<!doctype html>
       const fileName = typeof book.fileName === 'string' && book.fileName.trim() ? book.fileName.trim() : '我的单词本.html';
       return {
         id: typeof book.id === 'string' && book.id ? book.id : createCustomBookId(fileName),
-        name: typeof book.name === 'string' && book.name.trim() ? book.name.trim() : fileName.replace(/\.html?$/i, ''),
+        name: typeof book.name === 'string' && book.name.trim() ? book.name.trim() : fileName.replace(/\\.html?$/i, ''),
         fileName,
         words
       };
@@ -2989,7 +2989,7 @@ const output = `<!doctype html>
         const legacyFileName = fileNames.length === 1 ? fileNames[0] : '已导入的 ' + fileNames.length + ' 个单词本.html';
         customBook = {
           id: createCustomBookId(legacyFileName),
-          name: legacyFileName.replace(/\.html?$/i, ''),
+          name: legacyFileName.replace(/\\.html?$/i, ''),
           fileName: legacyFileName,
           words: rememberedWords
         };
@@ -4417,7 +4417,7 @@ const output = `<!doctype html>
       const storedBooks = importedBooks.map((book) => {
         const customBook = {
           id: createCustomBookId(book.fileName),
-          name: book.fileName.replace(/\.html?$/i, ''),
+          name: book.fileName.replace(/\\.html?$/i, ''),
           fileName: book.fileName,
           words: book.entries
         };
