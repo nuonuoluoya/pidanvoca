@@ -7,6 +7,8 @@ const defaultBookFileName = 'cet-4-vocabulary.html';
 const outputPath = path.join(__dirname, 'vocabulary-flashcards.html');
 const memoryCorePath = path.join(__dirname, 'memory-curve-core.js');
 const animationCoordinatorPath = path.join(__dirname, 'src', 'animations', 'animation-coordinator.js');
+const animationGeometryPath = path.join(__dirname, 'src', 'animations', 'geometry.js');
+const cardTransitionPath = path.join(__dirname, 'src', 'animations', 'card-transition.js');
 const fsrsEntryPath = require.resolve('ts-fsrs');
 const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
 const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
@@ -163,6 +165,8 @@ const embeddedDefaultBookId = JSON.stringify(defaultBuiltInBook.id);
 const embeddedLegacyBuiltInBookIds = JSON.stringify(legacyBuiltInBookIds);
 const embeddedMemoryCore = fs.readFileSync(memoryCorePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedAnimationCoordinator = fs.readFileSync(animationCoordinatorPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedAnimationGeometry = fs.readFileSync(animationGeometryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedCardTransition = fs.readFileSync(cardTransitionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
@@ -2844,6 +2848,8 @@ const output = `<!doctype html>
 
   <script>${embeddedMemoryCore}</script>
   <script>${embeddedAnimationCoordinator}</script>
+  <script>${embeddedAnimationGeometry}</script>
+  <script>${embeddedCardTransition}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
@@ -3731,25 +3737,11 @@ const output = `<!doctype html>
     }
 
     function waitForElementTransition(element, propertyName, fallbackMilliseconds) {
-      return new Promise((resolve) => {
-        let fallbackTimer = 0;
-        const finish = () => {
-          element.removeEventListener('transitionend', handleTransitionEnd);
-          element.removeEventListener('transitioncancel', finish);
-          window.clearTimeout(fallbackTimer);
-          resolve();
-        };
-        const handleTransitionEnd = (event) => {
-          if (event.target === element && event.propertyName === propertyName) finish();
-        };
-        element.addEventListener('transitionend', handleTransitionEnd);
-        element.addEventListener('transitioncancel', finish);
-        fallbackTimer = window.setTimeout(finish, fallbackMilliseconds);
-      });
+      return window.PidanvocaAnimations.waitForElementTransition(element, propertyName, fallbackMilliseconds, window);
     }
 
     function afterTwoAnimationFrames(callback) {
-      window.requestAnimationFrame(() => window.requestAnimationFrame(callback));
+      window.PidanvocaAnimations.afterTwoAnimationFrames(callback, window.requestAnimationFrame.bind(window));
     }
 
     function prepareMemoryStackAdvance() {
@@ -4299,13 +4291,7 @@ const output = `<!doctype html>
     }
 
     function createExitPoint() {
-      const angle = Math.PI * (0.58 + Math.random() * 0.84);
-      const distance = Math.hypot(window.innerWidth, window.innerHeight) * 1.16;
-      return {
-        x: Math.round(Math.cos(angle) * distance),
-        y: Math.round(Math.sin(angle) * distance),
-        rotate: Math.round(-28 + Math.random() * 56)
-      };
+      return window.PidanvocaAnimations.createExitPoint({ width: window.innerWidth, height: window.innerHeight });
     }
 
     function exitPointFor(deckPosition) {
@@ -4314,21 +4300,11 @@ const output = `<!doctype html>
     }
 
     function applyExitPoint(card, point) {
-      card.style.setProperty('--fly-x', point.x + 'px');
-      card.style.setProperty('--fly-y', point.y + 'px');
-      card.style.setProperty('--fly-rotate', point.rotate + 'deg');
-      card.dataset.flyX = String(point.x);
-      card.dataset.flyY = String(point.y);
-      card.dataset.flyRotate = String(point.rotate);
+      window.PidanvocaAnimations.applyExitPoint(card, point);
     }
 
     function clearExitPoint(card) {
-      card.style.removeProperty('--fly-x');
-      card.style.removeProperty('--fly-y');
-      card.style.removeProperty('--fly-rotate');
-      delete card.dataset.flyX;
-      delete card.dataset.flyY;
-      delete card.dataset.flyRotate;
+      window.PidanvocaAnimations.clearExitPoint(card);
     }
 
     const importedEntityDecoder = document.createElement('textarea');

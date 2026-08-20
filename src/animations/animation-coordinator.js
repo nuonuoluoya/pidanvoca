@@ -1,7 +1,13 @@
 (function attachAnimationCoordinator(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) root.PidanvocaAnimations = api;
+  if (root) {
+    root.PidanvocaAnimations = Object.assign(
+      {},
+      root.PidanvocaAnimations || {},
+      api,
+    );
+  }
 })(
   typeof globalThis !== "undefined" ? globalThis : this,
   function createAnimationApi() {

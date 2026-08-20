@@ -2911,7 +2911,13 @@
   <script>(function attachAnimationCoordinator(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) root.PidanvocaAnimations = api;
+  if (root) {
+    root.PidanvocaAnimations = Object.assign(
+      {},
+      root.PidanvocaAnimations || {},
+      api,
+    );
+  }
 })(
   typeof globalThis !== "undefined" ? globalThis : this,
   function createAnimationApi() {
@@ -3038,6 +3044,127 @@
       AnimationTransitionError,
       states: Object.freeze(Object.keys(transitions)),
     });
+  },
+);
+</script>
+  <script>(function attachAnimationGeometry(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaAnimations = Object.assign(
+      {},
+      root.PidanvocaAnimations || {},
+      api,
+    );
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createGeometryApi() {
+    "use strict";
+
+    function finiteNumber(value, fallback = 0) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number : fallback;
+    }
+
+    function createExitPoint(viewport, random = Math.random) {
+      const width = Math.max(1, finiteNumber(viewport?.width, 1));
+      const height = Math.max(1, finiteNumber(viewport?.height, 1));
+      const angle = Math.PI * (0.58 + random() * 0.84);
+      const distance = Math.hypot(width, height) * 1.16;
+      return Object.freeze({
+        x: Math.round(Math.cos(angle) * distance),
+        y: Math.round(Math.sin(angle) * distance),
+        rotate: Math.round(-28 + random() * 56),
+      });
+    }
+
+    function normalizeExitPoint(point) {
+      return {
+        x: Math.round(finiteNumber(point?.x)),
+        y: Math.round(finiteNumber(point?.y)),
+        rotate: Math.round(finiteNumber(point?.rotate)),
+      };
+    }
+
+    function applyExitPoint(element, point) {
+      const normalized = normalizeExitPoint(point);
+      element.style.setProperty("--fly-x", `${normalized.x}px`);
+      element.style.setProperty("--fly-y", `${normalized.y}px`);
+      element.style.setProperty("--fly-rotate", `${normalized.rotate}deg`);
+      element.dataset.flyX = String(normalized.x);
+      element.dataset.flyY = String(normalized.y);
+      element.dataset.flyRotate = String(normalized.rotate);
+      return normalized;
+    }
+
+    function clearExitPoint(element) {
+      element.style.removeProperty("--fly-x");
+      element.style.removeProperty("--fly-y");
+      element.style.removeProperty("--fly-rotate");
+      delete element.dataset.flyX;
+      delete element.dataset.flyY;
+      delete element.dataset.flyRotate;
+    }
+
+    return Object.freeze({ createExitPoint, applyExitPoint, clearExitPoint });
+  },
+);
+</script>
+  <script>(function attachCardTransition(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaAnimations = Object.assign(
+      {},
+      root.PidanvocaAnimations || {},
+      api,
+    );
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createTransitionApi() {
+    "use strict";
+
+    function waitForElementTransition(
+      element,
+      propertyName,
+      fallbackMilliseconds,
+      clock = globalThis,
+    ) {
+      return new Promise((resolve) => {
+        let settled = false;
+        let fallbackTimer = 0;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          element.removeEventListener("transitionend", handleTransitionEnd);
+          element.removeEventListener("transitioncancel", finish);
+          clock.clearTimeout(fallbackTimer);
+          resolve();
+        };
+        const handleTransitionEnd = (event) => {
+          if (event.target === element && event.propertyName === propertyName) {
+            finish();
+          }
+        };
+        element.addEventListener("transitionend", handleTransitionEnd);
+        element.addEventListener("transitioncancel", finish);
+        fallbackTimer = clock.setTimeout(
+          finish,
+          Math.max(0, Number(fallbackMilliseconds) || 0),
+        );
+      });
+    }
+
+    function afterTwoAnimationFrames(
+      callback,
+      frame = globalThis.requestAnimationFrame,
+    ) {
+      frame(() => frame(callback));
+    }
+
+    return Object.freeze({ waitForElementTransition, afterTwoAnimationFrames });
   },
 );
 </script>
@@ -5922,25 +6049,11 @@
     }
 
     function waitForElementTransition(element, propertyName, fallbackMilliseconds) {
-      return new Promise((resolve) => {
-        let fallbackTimer = 0;
-        const finish = () => {
-          element.removeEventListener('transitionend', handleTransitionEnd);
-          element.removeEventListener('transitioncancel', finish);
-          window.clearTimeout(fallbackTimer);
-          resolve();
-        };
-        const handleTransitionEnd = (event) => {
-          if (event.target === element && event.propertyName === propertyName) finish();
-        };
-        element.addEventListener('transitionend', handleTransitionEnd);
-        element.addEventListener('transitioncancel', finish);
-        fallbackTimer = window.setTimeout(finish, fallbackMilliseconds);
-      });
+      return window.PidanvocaAnimations.waitForElementTransition(element, propertyName, fallbackMilliseconds, window);
     }
 
     function afterTwoAnimationFrames(callback) {
-      window.requestAnimationFrame(() => window.requestAnimationFrame(callback));
+      window.PidanvocaAnimations.afterTwoAnimationFrames(callback, window.requestAnimationFrame.bind(window));
     }
 
     function prepareMemoryStackAdvance() {
@@ -6490,13 +6603,7 @@
     }
 
     function createExitPoint() {
-      const angle = Math.PI * (0.58 + Math.random() * 0.84);
-      const distance = Math.hypot(window.innerWidth, window.innerHeight) * 1.16;
-      return {
-        x: Math.round(Math.cos(angle) * distance),
-        y: Math.round(Math.sin(angle) * distance),
-        rotate: Math.round(-28 + Math.random() * 56)
-      };
+      return window.PidanvocaAnimations.createExitPoint({ width: window.innerWidth, height: window.innerHeight });
     }
 
     function exitPointFor(deckPosition) {
@@ -6505,21 +6612,11 @@
     }
 
     function applyExitPoint(card, point) {
-      card.style.setProperty('--fly-x', point.x + 'px');
-      card.style.setProperty('--fly-y', point.y + 'px');
-      card.style.setProperty('--fly-rotate', point.rotate + 'deg');
-      card.dataset.flyX = String(point.x);
-      card.dataset.flyY = String(point.y);
-      card.dataset.flyRotate = String(point.rotate);
+      window.PidanvocaAnimations.applyExitPoint(card, point);
     }
 
     function clearExitPoint(card) {
-      card.style.removeProperty('--fly-x');
-      card.style.removeProperty('--fly-y');
-      card.style.removeProperty('--fly-rotate');
-      delete card.dataset.flyX;
-      delete card.dataset.flyY;
-      delete card.dataset.flyRotate;
+      window.PidanvocaAnimations.clearExitPoint(card);
     }
 
     const importedEntityDecoder = document.createElement('textarea');

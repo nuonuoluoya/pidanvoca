@@ -152,8 +152,9 @@ test("记忆模式由真实主面板飞出且后方卡片独立进入", async ({
     );
     const incomingStyle = getComputedStyle(incomingPanel);
     const outgoingStyle = getComputedStyle(outgoingPanel);
+    const incomingRect = incomingPanel.getBoundingClientRect();
     return {
-      incomingLeft: incomingPanel.getBoundingClientRect().left,
+      incomingCenter: incomingRect.left + incomingRect.width / 2,
       incomingOpacity: Number(incomingStyle.opacity),
       incomingTransform: incomingStyle.transform,
       outgoingOpacity: Number(outgoingStyle.opacity),
@@ -166,7 +167,9 @@ test("记忆模式由真实主面板飞出且后方卡片独立进入", async ({
   });
 
   expect(stableBox).not.toBeNull();
-  expect(frame.incomingLeft).toBeGreaterThan(stableBox.x + 10);
+  expect(frame.incomingCenter).toBeGreaterThan(
+    stableBox.x + stableBox.width / 2 + 10,
+  );
   expect(frame.incomingOpacity).toBeLessThan(1);
   expect(frame.incomingTransform).not.toBe("none");
   expect(frame.outgoingOpacity).toBeLessThan(1);
