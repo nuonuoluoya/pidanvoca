@@ -20,6 +20,7 @@ const serviceWorkerPath = path.join(
   "service-worker.js",
 );
 const indexHtmlPath = path.join(projectRoot, "index.html");
+const performanceBudgets = require("../performance-budgets.json");
 
 test("生成页面带有禁止直接编辑的构建标记", () => {
   const html = fs.readFileSync(generatedHtmlPath, "utf8");
@@ -66,4 +67,14 @@ test("在线构建提供版本化缓存且不强制跳过等待阶段", () => {
   assert.match(worker, /books\.manifest\.json/);
   assert.match(worker, /clients\.claim\(\)/);
   assert.doesNotMatch(worker, /skipWaiting/);
+});
+
+test("在线与离线产物保持在已记录的体积预算内", () => {
+  assert.ok(
+    fs.statSync(webHtmlPath).size <= performanceBudgets.artifactBytes.webHtml,
+  );
+  assert.ok(
+    fs.statSync(offlineHtmlPath).size <=
+      performanceBudgets.artifactBytes.offlineHtml,
+  );
 });

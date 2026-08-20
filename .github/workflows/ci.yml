@@ -51,5 +51,8 @@ jobs:
       - name: Rebuild generated application
         run: npm run build
 
+      - name: Check performance budgets
+        run: npm run perf:check
+
       - name: Verify generated application is committed
         run: git diff --exit-code -- vocabulary-flashcards.html data dist

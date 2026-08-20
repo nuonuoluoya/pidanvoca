@@ -1,6 +1,7 @@
 const { expect, test } = require("@playwright/test");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const performanceBudgets = require("../../performance-budgets.json");
 
 test.beforeEach(async ({ page }) => {
   const runtimeErrors = [];
@@ -23,6 +24,9 @@ test("应用启动并渲染稳定主卡", async ({ page }) => {
   await expect(page).toHaveTitle(/随机单词本/);
   await expect(page.locator('.deck-card[data-offset="0"]')).toHaveCount(1);
   await expect(page.locator("#memoryButton")).toBeEnabled();
+  expect(await page.locator(".deck-card").count()).toBeLessThanOrEqual(
+    performanceBudgets.visibleCardDomLimit,
+  );
 });
 
 test("在线版按需请求非默认词库并完成切换", async ({ page }) => {

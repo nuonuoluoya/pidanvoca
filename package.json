@@ -16,6 +16,7 @@
     "test": "node --test \"tests/*.test.js\"",
     "test:unit": "node --test \"tests/*.test.js\"",
     "test:e2e": "playwright test",
+    "perf:check": "node scripts/performance-budget.js",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
     "ci:generated": "npm run build && git diff --exit-code -- vocabulary-flashcards.html data dist"
   },

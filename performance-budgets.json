@@ -1,0 +1,11 @@
+{
+  "artifactBytes": {
+    "webHtml": 1310720,
+    "offlineHtml": 3932160
+  },
+  "operationsMs": {
+    "shuffle20000": 250,
+    "import50000": 5000
+  },
+  "visibleCardDomLimit": 7
+}
