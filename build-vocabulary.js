@@ -13,6 +13,7 @@ const cardTransitionPath = path.join(__dirname, 'src', 'animations', 'card-trans
 const wordbookParserPath = path.join(__dirname, 'src', 'features', 'wordbooks', 'parser.js');
 const classicDeckModelPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'model.js');
 const reviewSessionPath = path.join(__dirname, 'src', 'features', 'memory-review', 'review-session.js');
+const databaseModulePath = path.join(__dirname, 'src', 'services', 'storage', 'database.js');
 const fsrsEntryPath = require.resolve('ts-fsrs');
 const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
 const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
@@ -96,6 +97,7 @@ const embeddedCardTransition = fs.readFileSync(cardTransitionPath, 'utf8').repla
 const embeddedWordbookParser = fs.readFileSync(wordbookParserPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedClassicDeckModel = fs.readFileSync(classicDeckModelPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedReviewSession = fs.readFileSync(reviewSessionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedDatabaseModule = fs.readFileSync(databaseModulePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
@@ -2782,6 +2784,7 @@ const output = `<!doctype html>
   <script>${embeddedWordbookParser}</script>
   <script>${embeddedClassicDeckModel}</script>
   <script>${embeddedReviewSession}</script>
+  <script>${embeddedDatabaseModule}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
@@ -2815,7 +2818,11 @@ const output = `<!doctype html>
       relearning_steps: ['10m'],
       enable_fuzz: true
     });
-    let vocabularyDatabasePromise = null;
+    const vocabularyDatabase = window.PidanvocaStorage.createDatabaseClient({
+      indexedDB: window.indexedDB,
+      name: vocabularyDatabaseName,
+      version: vocabularyDatabaseVersion
+    });
 
     function normalizeStudySize(value) {
       if (value === 'all' || value === Infinity) return Infinity;
@@ -2955,36 +2962,7 @@ const output = `<!doctype html>
     }
 
     function openVocabularyDatabase() {
-      if (!('indexedDB' in window)) return Promise.reject(new Error('IndexedDB unavailable'));
-      if (vocabularyDatabasePromise) return vocabularyDatabasePromise;
-
-      vocabularyDatabasePromise = new Promise((resolve, reject) => {
-        const request = window.indexedDB.open(vocabularyDatabaseName, vocabularyDatabaseVersion);
-        request.onupgradeneeded = () => {
-          const database = request.result;
-          if (!database.objectStoreNames.contains(vocabularyDatabaseStore)) {
-            database.createObjectStore(vocabularyDatabaseStore);
-          }
-          if (!database.objectStoreNames.contains(memoryCardStore)) {
-            const cardStore = database.createObjectStore(memoryCardStore, { keyPath: 'cardId' });
-            cardStore.createIndex('bookDue', ['bookId', 'due'], { unique: false });
-            cardStore.createIndex('bookState', ['bookId', 'state'], { unique: false });
-            cardStore.createIndex('updatedAt', 'updatedAt', { unique: false });
-          }
-          if (!database.objectStoreNames.contains(memoryLogStore)) {
-            const logStore = database.createObjectStore(memoryLogStore, { keyPath: 'logId' });
-            logStore.createIndex('cardReview', ['cardId', 'reviewedAt'], { unique: false });
-            logStore.createIndex('bookReview', ['bookId', 'reviewedAt'], { unique: false });
-            logStore.createIndex('sessionId', 'sessionId', { unique: false });
-          }
-          if (!database.objectStoreNames.contains(memoryMetaStore)) {
-            database.createObjectStore(memoryMetaStore);
-          }
-        };
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
-      });
-      return vocabularyDatabasePromise;
+      return vocabularyDatabase.open();
     }
 
     async function readRememberedPayload() {
@@ -3009,18 +2987,11 @@ const output = `<!doctype html>
     }
 
     function memoryRequest(request) {
-      return new Promise((resolve, reject) => {
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error || new Error('IndexedDB request failed'));
-      });
+      return window.PidanvocaStorage.requestResult(request);
     }
 
     function memoryTransactionDone(transaction) {
-      return new Promise((resolve, reject) => {
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error || new Error('IndexedDB transaction failed'));
-        transaction.onabort = () => reject(transaction.error || new Error('IndexedDB transaction aborted'));
-      });
+      return window.PidanvocaStorage.transactionDone(transaction);
     }
 
     async function memoryReadAll(storeName) {

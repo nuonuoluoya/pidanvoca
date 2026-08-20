@@ -26,6 +26,7 @@
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.2.0",
     "eslint": "^10.8.1",
+    "fake-indexeddb": "^6.2.5",
     "globals": "^17.11.0",
     "prettier": "^3.9.6",
     "typescript": "^7.0.2"
