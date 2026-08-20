@@ -16,6 +16,7 @@ const reviewSessionPath = path.join(__dirname, 'src', 'features', 'memory-review
 const databaseModulePath = path.join(__dirname, 'src', 'services', 'storage', 'database.js');
 const reviewRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'review-repository.js');
 const wordbookRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'wordbook-repository.js');
+const settingsRepositoryPath = path.join(__dirname, 'src', 'services', 'storage', 'settings-repository.js');
 const fsrsEntryPath = require.resolve('ts-fsrs');
 const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
 const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
@@ -102,6 +103,7 @@ const embeddedReviewSession = fs.readFileSync(reviewSessionPath, 'utf8').replace
 const embeddedDatabaseModule = fs.readFileSync(databaseModulePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedReviewRepository = fs.readFileSync(reviewRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedWordbookRepository = fs.readFileSync(wordbookRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedSettingsRepository = fs.readFileSync(settingsRepositoryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
@@ -2791,6 +2793,7 @@ const output = `<!doctype html>
   <script>${embeddedDatabaseModule}</script>
   <script>${embeddedReviewRepository}</script>
   <script>${embeddedWordbookRepository}</script>
+  <script>${embeddedSettingsRepository}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
@@ -2835,34 +2838,27 @@ const output = `<!doctype html>
       databaseClient: vocabularyDatabase,
       recordKey: vocabularyDatabaseRecord
     });
+    const settingsRepository = window.PidanvocaStorage.createSettingsRepository({
+      storage: (() => {
+        try { return window.localStorage; } catch { return null; }
+      })(),
+      studySizeKey: studySizeStorageKey,
+      studySizesKey: studySizePreferencesStorageKey,
+      themeKey: themeStorageKey,
+      legacyBookIds: LEGACY_BUILT_IN_BOOK_IDS,
+      defaultStudySize
+    });
 
     function normalizeStudySize(value) {
-      if (value === 'all' || value === Infinity) return Infinity;
-      const numericValue = Math.round(Number(value));
-      if (!Number.isFinite(numericValue)) return defaultStudySize;
-      return Math.min(500, Math.max(5, numericValue));
+      return window.PidanvocaStorage.normalizeStudySize(value, defaultStudySize);
     }
 
     function loadStudySizePreference() {
-      try {
-        const savedValue = window.localStorage.getItem(studySizeStorageKey);
-        return savedValue === null ? defaultStudySize : normalizeStudySize(savedValue);
-      } catch {
-        return defaultStudySize;
-      }
+      return settingsRepository.readLegacyStudySize();
     }
 
     function loadStudySizePreferences() {
-      try {
-        const saved = JSON.parse(window.localStorage.getItem(studySizePreferencesStorageKey) || '{}');
-        if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
-        return Object.fromEntries(Object.entries(saved).map(([bookId, value]) => [
-          LEGACY_BUILT_IN_BOOK_IDS[bookId] || bookId,
-          normalizeStudySize(value)
-        ]));
-      } catch {
-        return {};
-      }
+      return settingsRepository.readStudySizes();
     }
 
     function studySizePreferenceForBook(bookId) {
@@ -2873,12 +2869,7 @@ const output = `<!doctype html>
 
     function saveStudySizePreference(bookId, value) {
       studySizePreferences[bookId] = value;
-      try {
-        const serializable = Object.fromEntries(Object.entries(studySizePreferences).map(([id, size]) => [id, size === Infinity ? 'all' : size]));
-        window.localStorage.setItem(studySizePreferencesStorageKey, JSON.stringify(serializable));
-      } catch {
-        // The setting remains active for this page even when storage is unavailable.
-      }
+      settingsRepository.writeStudySizes(studySizePreferences);
     }
 
     function studySizeLabel(value, spaced = true) {
@@ -5045,7 +5036,7 @@ const output = `<!doctype html>
     function setTheme(theme) {
       if (theme === 'playful') document.documentElement.dataset.theme = 'playful';
       else delete document.documentElement.dataset.theme;
-      try { window.localStorage.setItem(themeStorageKey, theme === 'playful' ? 'playful' : 'classic'); } catch { /* Keep the in-page choice. */ }
+      settingsRepository.writeTheme(theme);
       syncThemeButton();
     }
 
