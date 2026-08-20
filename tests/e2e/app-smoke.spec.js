@@ -30,6 +30,55 @@ test("经典模式桌面按钮切换到下一张", async ({ page }, testInfo) =>
   await page.locator("#nextButton").click();
   await expect.poll(() => word.textContent()).not.toBe(initialWord);
   await expect(page.locator(".card-layer")).not.toHaveClass(/is-transitioning/);
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "idle",
+  );
+});
+
+test("经典模式快速重复前进只提交一次切换", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  const currentCard = page.locator('.deck-card[data-offset="0"]');
+  const initialPosition = Number(
+    await currentCard.getAttribute("data-deck-position"),
+  );
+
+  await page.evaluate(() => {
+    document.querySelector("#nextButton").click();
+    document.querySelector("#nextButton").click();
+  });
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "idle",
+  );
+
+  const settledPosition = Number(
+    await currentCard.getAttribute("data-deck-position"),
+  );
+  expect(settledPosition).toBe(initialPosition + 1);
+  await expect(page.locator('.deck-card[data-offset="0"]')).toHaveCount(1);
+  await expect(
+    page.locator(".is-flying-out, .is-returning, .is-yielding, .is-incoming"),
+  ).toHaveCount(0);
+});
+
+test("减少动态效果时经典切卡立即稳定且不创建临时状态", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.reload();
+  const currentCard = page.locator('.deck-card[data-offset="0"]');
+  const initialPosition = Number(
+    await currentCard.getAttribute("data-deck-position"),
+  );
+  await page.evaluate(() => document.querySelector("#nextButton").click());
+  await expect(currentCard).toHaveAttribute(
+    "data-deck-position",
+    String(initialPosition + 1),
+  );
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "idle",
+  );
+  await expect(page.locator(".card-layer")).not.toHaveClass(/is-transitioning/);
 });
 
 test("移动端隐藏经典箭头并保留卡片内容", async ({ page }, testInfo) => {
@@ -171,5 +220,30 @@ test("记忆模式撤销时返回卡遮挡当前卡并恢复上一词", async ({
   await expect(page.locator("#memoryCardWord")).toHaveText(previousWord);
   await expect(
     page.locator(".memory-panel--returning, .memory-panel--yielding"),
+  ).toHaveCount(0);
+});
+
+test("退出记忆模式由协调器返回经典卡并统一清理", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryBackdrop")).toHaveClass(/is-visible/);
+  await page.locator("#memoryCloseButton").click();
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "returning-classic",
+  );
+  const returningCard = page.locator(".deck-card.is-returning");
+  await expect(returningCard).toHaveCount(1);
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "idle",
+  );
+  await expect(page.locator("#memoryBackdrop")).toBeHidden();
+  await expect(page.locator("body")).not.toHaveClass(/memory-mode/);
+  await expect(page.locator('.deck-card[data-offset="0"]')).toHaveCount(1);
+  await expect(
+    page.locator(
+      ".memory-panel--flight, .memory-panel--incoming, .memory-panel--yielding, .deck-card.is-returning",
+    ),
   ).toHaveCount(0);
 });

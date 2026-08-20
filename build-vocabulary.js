@@ -3274,7 +3274,6 @@ const output = `<!doctype html>
     let isTransitioning = false;
     let isReady = false;
     let isImporting = false;
-    let transitionTimer = 0;
     let spellingAdvanceTimer = 0;
     let studyCompleteTimer = 0;
     let studyMode = 'full';
@@ -3285,7 +3284,6 @@ const output = `<!doctype html>
     let memoryIsOpen = false;
     let memoryModeLoading = false;
     let memoryClosing = false;
-    let memoryReturnTimer = 0;
     let memoryBlockedShakeTimer = 0;
     let memoryQueue = [];
     let memoryIndex = 0;
@@ -3307,6 +3305,7 @@ const output = `<!doctype html>
       const animationCoordinator = new window.PidanvocaAnimations.AnimationCoordinator(({ state }) => {
         deckStage.dataset.animationState = state;
       });
+      deckStage.dataset.animationState = animationCoordinator.state;
       const visibleRadius = 3;
       const exitPoints = new Map();
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -3872,7 +3871,7 @@ const output = `<!doctype html>
     }
 
     async function openMemoryReview() {
-      if (memoryIsOpen || memoryModeLoading || memoryClosing || !isReady) return;
+      if (memoryIsOpen || memoryModeLoading || memoryClosing || !animationCoordinator.isIdle || !isReady) return;
       memoryModeLoading = true;
       memoryButton.disabled = true;
       try {
@@ -3913,9 +3912,7 @@ const output = `<!doctype html>
       }
     }
 
-    function finishMemoryReviewClose() {
-      window.clearTimeout(memoryReturnTimer);
-      memoryReturnTimer = 0;
+    function finishMemoryReviewClose(transition = null) {
       cancelMemorySpellingAdvance();
       memoryClosing = false;
       memoryIsOpen = false;
@@ -3933,7 +3930,14 @@ const output = `<!doctype html>
       memoryBackdrop.setAttribute('aria-hidden', 'true');
       memoryBackdrop.classList.remove('is-visible', 'is-returning-to-classic');
       memoryBackdrop.hidden = true;
+      memoryBackdrop.querySelectorAll('.memory-panel--flight, .memory-panel--incoming, .memory-panel--yielding').forEach((panel) => {
+        if (panel !== memoryPanel) panel.remove();
+      });
+      memoryPanel.classList.remove('memory-panel--flight', 'memory-panel--incoming', 'memory-panel--returning', 'is-flying-out');
+      memoryPanel.style.removeProperty('visibility');
+      clearExitPoint(memoryPanel);
       cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing');
+      if (transition?.isActive()) transition.finish();
       renderStable();
       refreshMemorySummary();
       syncChrome();
@@ -3941,15 +3945,17 @@ const output = `<!doctype html>
     }
 
     function closeMemoryReview() {
-      if (!memoryIsOpen || memoryRatingPending || memoryClosing) return;
+      if (!memoryIsOpen || memoryRatingPending || memoryClosing || !animationCoordinator.isIdle) return;
       if (reducedMotion.matches) {
         finishMemoryReviewClose();
         return;
       }
 
+      const transition = animationCoordinator.begin('closing-memory', { mode: 'memory', direction: 'backward' });
+
       const incomingCard = cardLayer.querySelector('.deck-card[data-offset="0"]');
       if (!(incomingCard instanceof HTMLElement)) {
-        finishMemoryReviewClose();
+        finishMemoryReviewClose(transition);
         return;
       }
 
@@ -3960,14 +3966,14 @@ const output = `<!doctype html>
       applyExitPoint(incomingCard, exitPointFor(position));
       incomingCard.classList.add('is-incoming', 'is-returning');
       cardLayer.classList.add('is-memory-returning');
+      const returningFinished = waitForElementTransition(incomingCard, 'transform', 760);
       void incomingCard.offsetWidth;
 
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
+      afterTwoAnimationFrames(() => {
+          transition.move('returning-classic');
           cardLayer.classList.add('is-transitioning');
           memoryBackdrop.classList.add('is-returning-to-classic');
-          memoryReturnTimer = window.setTimeout(finishMemoryReviewClose, 680);
-        });
+          returningFinished.then(() => finishMemoryReviewClose(transition));
       });
     }
 
@@ -5049,7 +5055,6 @@ const output = `<!doctype html>
     }
 
     function renderStable() {
-      window.clearTimeout(transitionTimer);
       isTransitioning = false;
       cardLayer.classList.remove('is-transitioning');
       const cards = synchronizeCards(position);
@@ -5061,7 +5066,7 @@ const output = `<!doctype html>
     }
 
     function moveDeck(direction) {
-      if (isTransitioning || isStudyCompleteOpen) return;
+      if (isTransitioning || isStudyCompleteOpen || !animationCoordinator.isIdle) return;
       cancelSpellingAdvance();
       let target = position + direction;
       if (target < 0) return;
@@ -5085,6 +5090,10 @@ const output = `<!doctype html>
         return;
       }
 
+      const transition = animationCoordinator.begin(direction > 0 ? 'exiting-current' : 'undo-returning', {
+        mode: 'classic',
+        direction: direction > 0 ? 'forward' : 'backward'
+      });
       isTransitioning = true;
       cardLayer.setAttribute('aria-busy', 'true');
       const cards = synchronizeCards(position, direction, new Set([position, target]));
@@ -5108,26 +5117,32 @@ const output = `<!doctype html>
       cardLayer.replaceChildren(...cards);
       bringCurrentCardForward(cards);
       syncChrome();
+      const deckTransitionFinished = waitForElementTransition(incomingCard, 'transform', 760);
       void cardLayer.offsetWidth;
 
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
           cards.forEach((card) => setCardOffset(card, Number(card.dataset.deckPosition) - target));
+          if (direction > 0) {
+            transition.move('advancing-stack');
+            transition.move('revealing-incoming');
+          }
           cardLayer.classList.add('is-transitioning');
           window.requestAnimationFrame(() => {
             if (incomingWater && targetWaterLevel) incomingWater.style.setProperty('--water-level', targetWaterLevel);
           });
           syncChrome();
-          transitionTimer = window.setTimeout(() => {
+          deckTransitionFinished.then(() => {
+            if (!transition.isActive()) return;
             position = target;
+            transition.finish();
             renderStable();
-          }, 680);
+          });
         });
       });
     }
 
     function shuffle() {
-      window.clearTimeout(transitionTimer);
       cancelSpellingAdvance();
       closeStudyComplete();
       isTransitioning = false;
