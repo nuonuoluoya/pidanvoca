@@ -1,3 +1,4 @@
 # Local/private wordbooks. The application can import these in the browser,
 # but their source files must never be committed.
 /wordbooks/my/
+/node_modules/
