@@ -10,6 +10,12 @@ const outputPath = path.join(__dirname, "vocabulary-flashcards.html");
 const dataPath = path.join(__dirname, "data");
 const dataBooksPath = path.join(dataPath, "books");
 const webOutputPath = path.join(__dirname, "dist", "web", "index.html");
+const webServiceWorkerPath = path.join(
+  __dirname,
+  "dist",
+  "web",
+  "service-worker.js",
+);
 const offlineOutputPath = path.join(
   __dirname,
   "dist",
@@ -238,6 +244,12 @@ const booksManifest = {
     schemaVersion: 1,
   })),
 };
+const manifestJson = JSON.stringify(booksManifest, null, 2) + "\n";
+const webCacheVersion = crypto
+  .createHash("sha256")
+  .update(manifestJson)
+  .digest("hex")
+  .slice(0, 16);
 const includePersonalWordbooks = process.env.INCLUDE_PERSONAL_WORDBOOKS === "1";
 const personalBooks = (
   includePersonalWordbooks ? listHtmlFiles(personalWordbooksPath) : []
@@ -5707,6 +5719,23 @@ const output = `<!doctype html>
       shuffle();
       loadMemorySettings().finally(refreshMemorySummary);
     });
+    function registerOnlineServiceWorker() {
+      if (APP_BUILD_TARGET !== 'web' || !('serviceWorker' in navigator)) return;
+      navigator.serviceWorker.register('./service-worker.js').then((registration) => {
+        const announceUpdate = () => showImportStatus('发现新版本；完成当前学习后刷新页面即可更新。', false, true);
+        if (registration.waiting && navigator.serviceWorker.controller) announceUpdate();
+        registration.addEventListener('updatefound', () => {
+          const worker = registration.installing;
+          if (!worker) return;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) announceUpdate();
+          });
+        });
+      }).catch(() => {
+        // The online app remains usable when private browsing blocks Service Worker.
+      });
+    }
+    window.addEventListener('load', registerOnlineServiceWorker, { once: true });
     let memoryLastClock = Date.now();
     window.setInterval(() => {
       const now = Date.now();
@@ -5727,6 +5756,33 @@ const webOutput = output
     `const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};`,
     `const BUILT_IN_BOOKS = ${embeddedOnlineBuiltInBooks};`,
   );
+const defaultBookArtifact = bookArtifacts.find(
+  (artifact) => artifact.book.id === defaultBuiltInBook.id,
+);
+const webServiceWorker = `const CACHE_NAME = 'pidanvoca-${webCacheVersion}';
+const CORE_URLS = ['./index.html', '../../data/books.manifest.json', '../../data/books/${defaultBookArtifact.jsonFileName}'];
+self.addEventListener('install', (event) => {
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_URLS)));
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('pidanvoca-') && key !== CACHE_NAME).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) return;
+  if (event.request.mode === 'navigate') {
+    event.respondWith(fetch(event.request).then((response) => {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', copy));
+      return response;
+    }).catch(() => caches.match('./index.html')));
+    return;
+  }
+  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+    if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
+    return response;
+  })));
+});
+`;
 
 fs.mkdirSync(dataBooksPath, { recursive: true });
 fs.mkdirSync(path.dirname(webOutputPath), { recursive: true });
@@ -5740,12 +5796,13 @@ bookArtifacts.forEach((artifact) => {
 });
 fs.writeFileSync(
   path.join(dataPath, "books.manifest.json"),
-  JSON.stringify(booksManifest, null, 2) + "\n",
+  manifestJson,
   "utf8",
 );
 fs.writeFileSync(outputPath, output, "utf8");
 fs.writeFileSync(offlineOutputPath, output, "utf8");
 fs.writeFileSync(webOutputPath, webOutput, "utf8");
+fs.writeFileSync(webServiceWorkerPath, webServiceWorker, "utf8");
 console.log(
   `已生成在线版与单文件离线版，内置 ${builtInBooks.length} 个单词本、我的单词本 ${personalBooks.length} 个，共 ${builtInBooks.concat(personalBooks).reduce((total, book) => total + book.words.length, 0)} 个词条。`,
 );

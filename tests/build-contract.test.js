@@ -13,6 +13,12 @@ const offlineHtmlPath = path.join(
   "vocabulary-flashcards.html",
 );
 const manifestPath = path.join(projectRoot, "data", "books.manifest.json");
+const serviceWorkerPath = path.join(
+  projectRoot,
+  "dist",
+  "web",
+  "service-worker.js",
+);
 const indexHtmlPath = path.join(projectRoot, "index.html");
 
 test("生成页面带有禁止直接编辑的构建标记", () => {
@@ -52,4 +58,12 @@ test("词库清单保存稳定 ID、数量、Schema 与内容哈希", () => {
       fs.existsSync(path.resolve(path.dirname(manifestPath), book.url)),
     );
   });
+});
+
+test("在线构建提供版本化缓存且不强制跳过等待阶段", () => {
+  const worker = fs.readFileSync(serviceWorkerPath, "utf8");
+  assert.match(worker, /CACHE_NAME = 'pidanvoca-[a-f0-9]{16}'/);
+  assert.match(worker, /books\.manifest\.json/);
+  assert.match(worker, /clients\.claim\(\)/);
+  assert.doesNotMatch(worker, /skipWaiting/);
 });

@@ -30,6 +30,11 @@ test("在线版按需请求非默认词库并完成切换", async ({ page }) => 
   await expect(
     page.locator('.deck-card[data-offset="0"] .card-word'),
   ).toBeVisible();
+  const serviceWorkerScope = await page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.ready;
+    return registration.scope;
+  });
+  expect(serviceWorkerScope).toContain("/dist/web/");
   await page.locator("#settingsButton").click();
   await page.locator("#wordbookButton").click();
   const otherBook = page

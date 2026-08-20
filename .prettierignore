@@ -3,7 +3,7 @@ design-concepts/
 wordbooks/
 build-vocabulary.js
 data/books/*.json
-dist/**/*.html
+dist/**
 vocabulary-flashcards.html
 README.md
 package-lock.json

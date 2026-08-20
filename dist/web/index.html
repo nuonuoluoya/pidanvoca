@@ -9296,6 +9296,23 @@ function parseWordbook(source, fileName = "wordbook.html") {
       shuffle();
       loadMemorySettings().finally(refreshMemorySummary);
     });
+    function registerOnlineServiceWorker() {
+      if (APP_BUILD_TARGET !== 'web' || !('serviceWorker' in navigator)) return;
+      navigator.serviceWorker.register('./service-worker.js').then((registration) => {
+        const announceUpdate = () => showImportStatus('发现新版本；完成当前学习后刷新页面即可更新。', false, true);
+        if (registration.waiting && navigator.serviceWorker.controller) announceUpdate();
+        registration.addEventListener('updatefound', () => {
+          const worker = registration.installing;
+          if (!worker) return;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) announceUpdate();
+          });
+        });
+      }).catch(() => {
+        // The online app remains usable when private browsing blocks Service Worker.
+      });
+    }
+    window.addEventListener('load', registerOnlineServiceWorker, { once: true });
     let memoryLastClock = Date.now();
     window.setInterval(() => {
       const now = Date.now();

@@ -76,7 +76,7 @@ git clone https://github.com/nuonuoluoya/pidanvoca.git
 cd pidanvoca
 ```
 
-在线版入口是 `index.html`，会跳转到 `dist/web/index.html`。它启动时只携带默认词书，切换其他内置词书时根据 manifest 按需加载；本地开发时应通过静态服务器访问，以便浏览器正常请求 JSON 词库。
+在线版入口是 `index.html`，会跳转到 `dist/web/index.html`。它启动时只携带默认词书，切换其他内置词书时根据 manifest 按需加载；Service Worker 按词库内容版本缓存资源，发现新版本时提示刷新但不会打断当前学习。本地开发时应通过静态服务器访问，以便浏览器正常请求 JSON 词库。
 
 离线使用可只下载 [`vocabulary-flashcards.html`](./vocabulary-flashcards.html) 或 `dist/offline/vocabulary-flashcards.html`。两者都内嵌页面代码、FSRS 调度器和全部内置词书，可直接通过 `file://` 打开且不依赖 CDN。
 
