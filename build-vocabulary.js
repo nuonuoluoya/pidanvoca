@@ -97,6 +97,22 @@ const databaseModulePath = path.join(
   "storage",
   "database.js",
 );
+const storageMigrationV1Path = path.join(
+  __dirname,
+  "src",
+  "services",
+  "storage",
+  "migrations",
+  "v1.js",
+);
+const storageMigrationV2Path = path.join(
+  __dirname,
+  "src",
+  "services",
+  "storage",
+  "migrations",
+  "v2.js",
+);
 const reviewRepositoryPath = path.join(
   __dirname,
   "src",
@@ -359,6 +375,14 @@ const embeddedMemoryRefreshPolicy = fs
   .replace(/<\/script/gi, "<\\/script");
 const embeddedDatabaseModule = fs
   .readFileSync(databaseModulePath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedStorageMigrationV1 = fs
+  .readFileSync(storageMigrationV1Path, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedStorageMigrationV2 = fs
+  .readFileSync(storageMigrationV2Path, "utf8")
   .replace(/[ \t]+$/gm, "")
   .replace(/<\/script/gi, "<\\/script");
 const embeddedReviewRepository = fs
@@ -3087,6 +3111,8 @@ const output = `<!doctype html>
   <script>${embeddedReviewSession}</script>
   <script>${embeddedMemoryReviewController}</script>
   <script>${embeddedMemoryRefreshPolicy}</script>
+  <script>${embeddedStorageMigrationV1}</script>
+  <script>${embeddedStorageMigrationV2}</script>
   <script>${embeddedDatabaseModule}</script>
   <script>${embeddedReviewRepository}</script>
   <script>${embeddedWordbookRepository}</script>

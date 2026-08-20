@@ -6,6 +6,7 @@ const {
   requestResult,
   schema,
   transactionDone,
+  upgradeSchema,
 } = require("../src/services/storage/database");
 
 function databaseName(label) {
@@ -93,5 +94,25 @@ test("事务操作抛错时统一中止且不留下部分写入", async () => {
   const read = database.transaction("reviewCards", "readonly");
   const cards = await requestResult(read.objectStore("reviewCards").getAll());
   assert.deepEqual(cards, []);
+  await client.close();
+});
+
+test("迁移按版本边界执行且重复校验不会破坏现有索引", async () => {
+  const name = databaseName("versioned-migrations");
+  const legacy = await openVersionOne(name);
+  legacy.close();
+
+  const client = createDatabaseClient({ indexedDB, name });
+  const database = await client.open();
+  const transaction = database.transaction(
+    ["state", "reviewCards", "reviewLogs", "reviewMeta"],
+    "readonly",
+  );
+  assert.doesNotThrow(() => upgradeSchema(database, transaction, 2, 2));
+  assert.deepEqual(
+    Array.from(transaction.objectStore("reviewLogs").indexNames),
+    ["bookReview", "cardReview", "sessionId"],
+  );
+  await transactionDone(transaction);
   await client.close();
 });

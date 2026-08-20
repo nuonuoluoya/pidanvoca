@@ -1,12 +1,20 @@
 (function attachDatabase(root, factory) {
-  const api = factory();
+  const migrationApi =
+    typeof module === "object" && module.exports
+      ? Object.assign(
+          {},
+          require("./migrations/v1"),
+          require("./migrations/v2"),
+        )
+      : root?.PidanvocaStorageMigrations;
+  const api = factory(migrationApi);
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) {
     root.PidanvocaStorage = Object.assign({}, root.PidanvocaStorage || {}, api);
   }
 })(
   typeof globalThis !== "undefined" ? globalThis : this,
-  function createDatabaseApi() {
+  function createDatabaseApi(migrations) {
     "use strict";
 
     const schema = Object.freeze({
@@ -41,40 +49,25 @@
       });
     }
 
-    function ensureIndex(store, name, keyPath, options = { unique: false }) {
-      if (!store.indexNames.contains(name))
-        store.createIndex(name, keyPath, options);
-    }
+    const migrationSteps = Object.freeze([
+      { version: 1, run: migrations?.migrateToV1 },
+      { version: 2, run: migrations?.migrateToV2 },
+    ]);
 
-    function upgradeSchema(database, transaction) {
-      const stateStore = database.objectStoreNames.contains(schema.stores.state)
-        ? transaction.objectStore(schema.stores.state)
-        : database.createObjectStore(schema.stores.state);
-      const cardStore = database.objectStoreNames.contains(
-        schema.stores.reviewCards,
-      )
-        ? transaction.objectStore(schema.stores.reviewCards)
-        : database.createObjectStore(schema.stores.reviewCards, {
-            keyPath: "cardId",
-          });
-      const logStore = database.objectStoreNames.contains(
-        schema.stores.reviewLogs,
-      )
-        ? transaction.objectStore(schema.stores.reviewLogs)
-        : database.createObjectStore(schema.stores.reviewLogs, {
-            keyPath: "logId",
-          });
-      if (!database.objectStoreNames.contains(schema.stores.reviewMeta)) {
-        database.createObjectStore(schema.stores.reviewMeta);
-      }
-
-      ensureIndex(cardStore, "bookDue", ["bookId", "due"]);
-      ensureIndex(cardStore, "bookState", ["bookId", "state"]);
-      ensureIndex(cardStore, "updatedAt", "updatedAt");
-      ensureIndex(logStore, "cardReview", ["cardId", "reviewedAt"]);
-      ensureIndex(logStore, "bookReview", ["bookId", "reviewedAt"]);
-      ensureIndex(logStore, "sessionId", "sessionId");
-      return stateStore;
+    function upgradeSchema(
+      database,
+      transaction,
+      oldVersion = 0,
+      targetVersion = schema.version,
+    ) {
+      migrationSteps.forEach((step) => {
+        if (oldVersion < step.version && targetVersion >= step.version) {
+          if (typeof step.run !== "function") {
+            throw new Error(`Missing database migration v${step.version}`);
+          }
+          step.run(database, transaction);
+        }
+      });
     }
 
     function createDatabaseClient({
@@ -90,8 +83,13 @@
         if (openPromise) return openPromise;
         openPromise = new Promise((resolve, reject) => {
           const request = indexedDB.open(name, version);
-          request.onupgradeneeded = () => {
-            upgradeSchema(request.result, request.transaction);
+          request.onupgradeneeded = (event) => {
+            upgradeSchema(
+              request.result,
+              request.transaction,
+              event.oldVersion,
+              event.newVersion || version,
+            );
           };
           request.onsuccess = () => {
             const database = request.result;
