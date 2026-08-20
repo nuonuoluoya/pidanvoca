@@ -3292,6 +3292,192 @@ function parseWordbook(source, fileName = "wordbook.html") {
   });
 });
 </script>
+  <script>(function attachWordbookController(root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) {
+    root.PidanvocaWordbooks = Object.assign(
+      {},
+      root.PidanvocaWordbooks || {},
+      api,
+    );
+  }
+})(
+  typeof globalThis !== "undefined" ? globalThis : this,
+  function createWordbookControllerApi() {
+    "use strict";
+
+    class WordbookController {
+      constructor(options) {
+        this.builtInBooks = options.builtInBooks;
+        this.defaultBook = options.defaultBook;
+        this.projectPersonalBookIds = options.projectPersonalBookIds;
+        this.studySizeForBook = options.studySizeForBook;
+        this.state = {
+          words: options.defaultBook.words,
+          activeBuiltInBookId: options.defaultBook.id,
+          activeCustomBookId: null,
+          customBooks: options.projectPersonalBooks.slice(),
+          deletedProjectPersonalBookIds: [],
+          studySize: options.studySizeForBook(options.defaultBook.id),
+          expandedStudyBookId: null,
+        };
+      }
+
+      activeBookKey() {
+        return (
+          this.state.activeBuiltInBookId ||
+          this.state.activeCustomBookId ||
+          "combined-import"
+        );
+      }
+
+      activeBook() {
+        if (this.state.activeBuiltInBookId) {
+          return (
+            this.builtInBooks.find(
+              (book) => book.id === this.state.activeBuiltInBookId,
+            ) || null
+          );
+        }
+        return (
+          this.state.customBooks.find(
+            (book) => book.id === this.state.activeCustomBookId,
+          ) || null
+        );
+      }
+
+      setExpanded(bookId, isOpen) {
+        this.state.expandedStudyBookId = isOpen ? bookId : null;
+      }
+
+      selectBuiltIn(bookId) {
+        const book = this.builtInBooks.find((entry) => entry.id === bookId);
+        if (!book) return Object.freeze({ type: "missing" });
+        if (this.state.activeBuiltInBookId === book.id) {
+          this.setExpanded(
+            book.id,
+            this.state.expandedStudyBookId !== book.id,
+          );
+          return Object.freeze({ type: "toggled", book });
+        }
+        this.state.words = book.words;
+        this.state.activeBuiltInBookId = book.id;
+        this.state.activeCustomBookId = null;
+        this.state.studySize = this.studySizeForBook(book.id);
+        this.state.expandedStudyBookId = book.id;
+        return Object.freeze({ type: "selected", book });
+      }
+
+      selectCustom(bookId) {
+        const book = this.state.customBooks.find(
+          (entry) => entry.id === bookId,
+        );
+        if (!book) return Object.freeze({ type: "missing" });
+        if (this.state.activeCustomBookId === book.id) {
+          this.setExpanded(
+            book.id,
+            this.state.expandedStudyBookId !== book.id,
+          );
+          return Object.freeze({ type: "toggled", book });
+        }
+        this.state.words = book.words;
+        this.state.activeBuiltInBookId = null;
+        this.state.activeCustomBookId = book.id;
+        this.state.studySize = this.studySizeForBook(book.id);
+        this.state.expandedStudyBookId = book.id;
+        return Object.freeze({ type: "selected", book });
+      }
+
+      storeImportedBooks(
+        importedBooks,
+        createCustomBookId,
+        combinedWords = importedBooks.flatMap((book) => book.entries),
+      ) {
+        const bookMap = new Map(
+          this.state.customBooks.map((book) => [book.id, book]),
+        );
+        const storedBooks = importedBooks.map((book) => {
+          const customBook = {
+            id: createCustomBookId(book.fileName),
+            name: book.fileName.replace(/\.html?$/i, ""),
+            fileName: book.fileName,
+            words: book.entries,
+          };
+          bookMap.set(customBook.id, customBook);
+          return customBook;
+        });
+        this.state.customBooks = Array.from(bookMap.values());
+        const restoredIds = new Set(storedBooks.map((book) => book.id));
+        this.state.deletedProjectPersonalBookIds =
+          this.state.deletedProjectPersonalBookIds.filter(
+            (id) => !restoredIds.has(id),
+          );
+        this.state.words = combinedWords;
+        this.state.activeBuiltInBookId = null;
+        this.state.activeCustomBookId =
+          storedBooks.length === 1 ? storedBooks[0].id : null;
+        this.state.studySize = this.studySizeForBook(this.activeBookKey());
+        this.state.expandedStudyBookId = this.activeBookKey();
+        return storedBooks;
+      }
+
+      deleteCustom(bookId) {
+        const book = this.state.customBooks.find(
+          (entry) => entry.id === bookId,
+        );
+        if (!book) return Object.freeze({ type: "missing" });
+        const wasActive = this.state.activeCustomBookId === book.id;
+        this.state.customBooks = this.state.customBooks.filter(
+          (entry) => entry.id !== book.id,
+        );
+        if (
+          this.projectPersonalBookIds.has(book.id) &&
+          !this.state.deletedProjectPersonalBookIds.includes(book.id)
+        ) {
+          this.state.deletedProjectPersonalBookIds.push(book.id);
+        }
+        if (wasActive) {
+          this.state.words = this.defaultBook.words;
+          this.state.activeBuiltInBookId = this.defaultBook.id;
+          this.state.activeCustomBookId = null;
+          this.state.studySize = this.studySizeForBook(this.defaultBook.id);
+          this.state.expandedStudyBookId = null;
+        }
+        return Object.freeze({ type: "deleted", book, wasActive });
+      }
+
+      installLegacyBindings(target) {
+        const controller = this;
+        const propertyMap = {
+          WORDS: "words",
+          activeBuiltInBookId: "activeBuiltInBookId",
+          activeCustomBookId: "activeCustomBookId",
+          customBooks: "customBooks",
+          deletedProjectPersonalBookIds: "deletedProjectPersonalBookIds",
+          studySize: "studySize",
+          expandedStudyBookId: "expandedStudyBookId",
+        };
+        Object.entries(propertyMap).forEach(([legacyName, stateName]) => {
+          Object.defineProperty(target, legacyName, {
+            configurable: true,
+            enumerable: false,
+            get: () => controller.state[stateName],
+            set: (value) => {
+              controller.state[stateName] = value;
+            },
+          });
+        });
+        return () => {
+          Object.keys(propertyMap).forEach((name) => delete target[name]);
+        };
+      }
+    }
+
+    return Object.freeze({ WordbookController });
+  },
+);
+</script>
   <script>(function attachClassicDeckModel(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -6588,11 +6774,6 @@ function parseWordbook(source, fileName = "wordbook.html") {
       return localVocabulary;
     }
 
-    let WORDS = DEFAULT_WORDS;
-    let activeBuiltInBookId = DEFAULT_BOOK.id;
-    let activeCustomBookId = null;
-    let customBooks = PROJECT_PERSONAL_BOOKS.slice();
-    let deletedProjectPersonalBookIds = [];
     const deckStage = document.querySelector('.deck-stage');
     const cardLayer = document.getElementById('cardLayer');
     const previousButton = document.getElementById('previousButton');
@@ -6688,8 +6869,14 @@ function parseWordbook(source, fileName = "wordbook.html") {
     memoryReviewController.installLegacyBindings(window);
     const legacyStudySizePreference = loadStudySizePreference();
     let studySizePreferences = loadStudySizePreferences();
-    let studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
-    let expandedStudyBookId = null;
+    const wordbookController = new window.PidanvocaWordbooks.WordbookController({
+      builtInBooks: BUILT_IN_BOOKS,
+      defaultBook: DEFAULT_BOOK,
+      projectPersonalBooks: PROJECT_PERSONAL_BOOKS,
+      projectPersonalBookIds: PROJECT_PERSONAL_BOOK_IDS,
+      studySizeForBook: studySizePreferenceForBook
+    });
+    wordbookController.installLegacyBindings(window);
     let isStudyCompleteOpen = false;
     let statusTimer = 0;
     let isTransitioning = false;
@@ -6723,7 +6910,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
       let classicSwipeGesture = null;
 
     function activeStudyBookKey() {
-      return activeBuiltInBookId || activeCustomBookId || 'combined-import';
+      return wordbookController.activeBookKey();
     }
 
     function activeMemoryBookId() {
@@ -7842,21 +8029,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     function storeImportedBooks(importedBooks) {
-      const bookMap = new Map(customBooks.map((book) => [book.id, book]));
-      const storedBooks = importedBooks.map((book) => {
-        const customBook = {
-          id: createCustomBookId(book.fileName),
-          name: book.fileName.replace(/\.html?$/i, ''),
-          fileName: book.fileName,
-          words: book.entries
-        };
-        bookMap.set(customBook.id, customBook);
-        return customBook;
-      });
-      customBooks = Array.from(bookMap.values());
-      const restoredIds = new Set(storedBooks.map((book) => book.id));
-      deletedProjectPersonalBookIds = deletedProjectPersonalBookIds.filter((id) => !restoredIds.has(id));
-      activeCustomBookId = storedBooks.length === 1 ? storedBooks[0].id : null;
+      return wordbookController.storeImportedBooks(importedBooks, createCustomBookId, WORDS);
     }
 
     async function importBooks(files) {
@@ -7881,10 +8054,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
         if (!validBooks.length) throw new Error('未在所选文件中识别到生词表，请选择 HTML 格式的导出生词本。');
 
         const total = replaceWithImportedWords(validBooks.flatMap((book) => book.entries));
-        activeBuiltInBookId = null;
         storeImportedBooks(validBooks);
-        studySize = studySizePreferenceForBook(activeStudyBookKey());
-        expandedStudyBookId = activeStudyBookKey();
         renderWordbookLists();
         const remembered = await rememberVocabulary({ fileNames: validBooks.map((book) => book.fileName) });
         const skipped = files.length - validBooks.length;
@@ -8566,7 +8736,7 @@ function parseWordbook(source, fileName = "wordbook.html") {
     }
 
     function setExpandedStudyBook(bookId, isOpen) {
-      expandedStudyBookId = isOpen ? bookId : null;
+      wordbookController.setExpanded(bookId, isOpen);
       renderWordbookLists();
       updateStudySizeControls();
       if (expandedStudyBookId) window.setTimeout(scrollExpandedStudyBook, 80);
@@ -8653,19 +8823,17 @@ function parseWordbook(source, fileName = "wordbook.html") {
 
     async function selectBuiltInBook(bookId) {
       if (!isReady || isTransitioning || isImporting) return;
-      const book = BUILT_IN_BOOKS.find((entry) => entry.id === bookId);
-      if (!book) return;
-      if (activeBuiltInBookId === book.id) {
-        setExpandedStudyBook(book.id, expandedStudyBookId !== book.id);
+      const selection = wordbookController.selectBuiltIn(bookId);
+      if (selection.type === 'missing') return;
+      const book = selection.book;
+      if (selection.type === 'toggled') {
+        renderWordbookLists();
+        updateStudySizeControls();
+        if (expandedStudyBookId) window.setTimeout(scrollExpandedStudyBook, 80);
         return;
       }
 
       isImporting = true;
-      WORDS = book.words;
-      activeBuiltInBookId = book.id;
-      activeCustomBookId = null;
-      studySize = studySizePreferenceForBook(book.id);
-      expandedStudyBookId = book.id;
       renderWordbookLists();
       shuffle();
       window.setTimeout(scrollExpandedStudyBook, 80);
@@ -8684,19 +8852,17 @@ function parseWordbook(source, fileName = "wordbook.html") {
 
     async function selectCustomBook(bookId) {
       if (!isReady || isTransitioning || isImporting) return;
-      const book = customBooks.find((entry) => entry.id === bookId);
-      if (!book) return;
-      if (activeCustomBookId === book.id) {
-        setExpandedStudyBook(book.id, expandedStudyBookId !== book.id);
+      const selection = wordbookController.selectCustom(bookId);
+      if (selection.type === 'missing') return;
+      const book = selection.book;
+      if (selection.type === 'toggled') {
+        renderWordbookLists();
+        updateStudySizeControls();
+        if (expandedStudyBookId) window.setTimeout(scrollExpandedStudyBook, 80);
         return;
       }
 
       isImporting = true;
-      WORDS = book.words;
-      activeBuiltInBookId = null;
-      activeCustomBookId = book.id;
-      studySize = studySizePreferenceForBook(book.id);
-      expandedStudyBookId = book.id;
       renderWordbookLists();
       shuffle();
       window.setTimeout(scrollExpandedStudyBook, 80);
@@ -8725,25 +8891,12 @@ function parseWordbook(source, fileName = "wordbook.html") {
       if (!window.confirm(warning)) return;
 
       isImporting = true;
-      const wasActive = activeCustomBookId === book.id;
-      customBooks = customBooks.filter((entry) => entry.id !== book.id);
-      if (isProjectBook && !deletedProjectPersonalBookIds.includes(book.id)) {
-        deletedProjectPersonalBookIds.push(book.id);
-      }
-
-      if (wasActive) {
-        WORDS = DEFAULT_WORDS;
-        activeBuiltInBookId = DEFAULT_BOOK.id;
-        activeCustomBookId = null;
-        studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
-        expandedStudyBookId = null;
-        shuffle();
-      }
+      const deletion = wordbookController.deleteCustom(bookId);
+      const wasActive = deletion.wasActive;
+      if (wasActive) shuffle();
       renderWordbookLists();
 
-      const activeBook = activeBuiltInBookId
-        ? BUILT_IN_BOOKS.find((entry) => entry.id === activeBuiltInBookId)
-        : customBooks.find((entry) => entry.id === activeCustomBookId);
+      const activeBook = wordbookController.activeBook();
       const remembered = await rememberVocabulary({
         fileNames: activeBook ? [activeBook.fileName] : []
       });

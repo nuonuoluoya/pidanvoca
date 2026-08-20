@@ -11,6 +11,7 @@ const animationCoordinatorPath = path.join(__dirname, 'src', 'animations', 'anim
 const animationGeometryPath = path.join(__dirname, 'src', 'animations', 'geometry.js');
 const cardTransitionPath = path.join(__dirname, 'src', 'animations', 'card-transition.js');
 const wordbookParserPath = path.join(__dirname, 'src', 'features', 'wordbooks', 'parser.js');
+const wordbookControllerPath = path.join(__dirname, 'src', 'features', 'wordbooks', 'controller.js');
 const classicDeckModelPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'model.js');
 const classicDeckControllerPath = path.join(__dirname, 'src', 'features', 'classic-deck', 'controller.js');
 const reviewSessionPath = path.join(__dirname, 'src', 'features', 'memory-review', 'review-session.js');
@@ -100,6 +101,7 @@ const embeddedAnimationCoordinator = fs.readFileSync(animationCoordinatorPath, '
 const embeddedAnimationGeometry = fs.readFileSync(animationGeometryPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedCardTransition = fs.readFileSync(cardTransitionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedWordbookParser = fs.readFileSync(wordbookParserPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedWordbookController = fs.readFileSync(wordbookControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedClassicDeckModel = fs.readFileSync(classicDeckModelPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedClassicDeckController = fs.readFileSync(classicDeckControllerPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedReviewSession = fs.readFileSync(reviewSessionPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
@@ -2792,6 +2794,7 @@ const output = `<!doctype html>
   <script>${embeddedAnimationGeometry}</script>
   <script>${embeddedCardTransition}</script>
   <script>${embeddedWordbookParser}</script>
+  <script>${embeddedWordbookController}</script>
   <script>${embeddedClassicDeckModel}</script>
   <script>${embeddedClassicDeckController}</script>
   <script>${embeddedReviewSession}</script>
@@ -3045,11 +3048,6 @@ const output = `<!doctype html>
       return localVocabulary;
     }
 
-    let WORDS = DEFAULT_WORDS;
-    let activeBuiltInBookId = DEFAULT_BOOK.id;
-    let activeCustomBookId = null;
-    let customBooks = PROJECT_PERSONAL_BOOKS.slice();
-    let deletedProjectPersonalBookIds = [];
     const deckStage = document.querySelector('.deck-stage');
     const cardLayer = document.getElementById('cardLayer');
     const previousButton = document.getElementById('previousButton');
@@ -3145,8 +3143,14 @@ const output = `<!doctype html>
     memoryReviewController.installLegacyBindings(window);
     const legacyStudySizePreference = loadStudySizePreference();
     let studySizePreferences = loadStudySizePreferences();
-    let studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
-    let expandedStudyBookId = null;
+    const wordbookController = new window.PidanvocaWordbooks.WordbookController({
+      builtInBooks: BUILT_IN_BOOKS,
+      defaultBook: DEFAULT_BOOK,
+      projectPersonalBooks: PROJECT_PERSONAL_BOOKS,
+      projectPersonalBookIds: PROJECT_PERSONAL_BOOK_IDS,
+      studySizeForBook: studySizePreferenceForBook
+    });
+    wordbookController.installLegacyBindings(window);
     let isStudyCompleteOpen = false;
     let statusTimer = 0;
     let isTransitioning = false;
@@ -3180,7 +3184,7 @@ const output = `<!doctype html>
       let classicSwipeGesture = null;
 
     function activeStudyBookKey() {
-      return activeBuiltInBookId || activeCustomBookId || 'combined-import';
+      return wordbookController.activeBookKey();
     }
 
     function activeMemoryBookId() {
@@ -4299,21 +4303,7 @@ const output = `<!doctype html>
     }
 
     function storeImportedBooks(importedBooks) {
-      const bookMap = new Map(customBooks.map((book) => [book.id, book]));
-      const storedBooks = importedBooks.map((book) => {
-        const customBook = {
-          id: createCustomBookId(book.fileName),
-          name: book.fileName.replace(/\\.html?$/i, ''),
-          fileName: book.fileName,
-          words: book.entries
-        };
-        bookMap.set(customBook.id, customBook);
-        return customBook;
-      });
-      customBooks = Array.from(bookMap.values());
-      const restoredIds = new Set(storedBooks.map((book) => book.id));
-      deletedProjectPersonalBookIds = deletedProjectPersonalBookIds.filter((id) => !restoredIds.has(id));
-      activeCustomBookId = storedBooks.length === 1 ? storedBooks[0].id : null;
+      return wordbookController.storeImportedBooks(importedBooks, createCustomBookId, WORDS);
     }
 
     async function importBooks(files) {
@@ -4338,10 +4328,7 @@ const output = `<!doctype html>
         if (!validBooks.length) throw new Error('未在所选文件中识别到生词表，请选择 HTML 格式的导出生词本。');
 
         const total = replaceWithImportedWords(validBooks.flatMap((book) => book.entries));
-        activeBuiltInBookId = null;
         storeImportedBooks(validBooks);
-        studySize = studySizePreferenceForBook(activeStudyBookKey());
-        expandedStudyBookId = activeStudyBookKey();
         renderWordbookLists();
         const remembered = await rememberVocabulary({ fileNames: validBooks.map((book) => book.fileName) });
         const skipped = files.length - validBooks.length;
@@ -5023,7 +5010,7 @@ const output = `<!doctype html>
     }
 
     function setExpandedStudyBook(bookId, isOpen) {
-      expandedStudyBookId = isOpen ? bookId : null;
+      wordbookController.setExpanded(bookId, isOpen);
       renderWordbookLists();
       updateStudySizeControls();
       if (expandedStudyBookId) window.setTimeout(scrollExpandedStudyBook, 80);
@@ -5110,19 +5097,17 @@ const output = `<!doctype html>
 
     async function selectBuiltInBook(bookId) {
       if (!isReady || isTransitioning || isImporting) return;
-      const book = BUILT_IN_BOOKS.find((entry) => entry.id === bookId);
-      if (!book) return;
-      if (activeBuiltInBookId === book.id) {
-        setExpandedStudyBook(book.id, expandedStudyBookId !== book.id);
+      const selection = wordbookController.selectBuiltIn(bookId);
+      if (selection.type === 'missing') return;
+      const book = selection.book;
+      if (selection.type === 'toggled') {
+        renderWordbookLists();
+        updateStudySizeControls();
+        if (expandedStudyBookId) window.setTimeout(scrollExpandedStudyBook, 80);
         return;
       }
 
       isImporting = true;
-      WORDS = book.words;
-      activeBuiltInBookId = book.id;
-      activeCustomBookId = null;
-      studySize = studySizePreferenceForBook(book.id);
-      expandedStudyBookId = book.id;
       renderWordbookLists();
       shuffle();
       window.setTimeout(scrollExpandedStudyBook, 80);
@@ -5141,19 +5126,17 @@ const output = `<!doctype html>
 
     async function selectCustomBook(bookId) {
       if (!isReady || isTransitioning || isImporting) return;
-      const book = customBooks.find((entry) => entry.id === bookId);
-      if (!book) return;
-      if (activeCustomBookId === book.id) {
-        setExpandedStudyBook(book.id, expandedStudyBookId !== book.id);
+      const selection = wordbookController.selectCustom(bookId);
+      if (selection.type === 'missing') return;
+      const book = selection.book;
+      if (selection.type === 'toggled') {
+        renderWordbookLists();
+        updateStudySizeControls();
+        if (expandedStudyBookId) window.setTimeout(scrollExpandedStudyBook, 80);
         return;
       }
 
       isImporting = true;
-      WORDS = book.words;
-      activeBuiltInBookId = null;
-      activeCustomBookId = book.id;
-      studySize = studySizePreferenceForBook(book.id);
-      expandedStudyBookId = book.id;
       renderWordbookLists();
       shuffle();
       window.setTimeout(scrollExpandedStudyBook, 80);
@@ -5182,25 +5165,12 @@ const output = `<!doctype html>
       if (!window.confirm(warning)) return;
 
       isImporting = true;
-      const wasActive = activeCustomBookId === book.id;
-      customBooks = customBooks.filter((entry) => entry.id !== book.id);
-      if (isProjectBook && !deletedProjectPersonalBookIds.includes(book.id)) {
-        deletedProjectPersonalBookIds.push(book.id);
-      }
-
-      if (wasActive) {
-        WORDS = DEFAULT_WORDS;
-        activeBuiltInBookId = DEFAULT_BOOK.id;
-        activeCustomBookId = null;
-        studySize = studySizePreferenceForBook(DEFAULT_BOOK.id);
-        expandedStudyBookId = null;
-        shuffle();
-      }
+      const deletion = wordbookController.deleteCustom(bookId);
+      const wasActive = deletion.wasActive;
+      if (wasActive) shuffle();
       renderWordbookLists();
 
-      const activeBook = activeBuiltInBookId
-        ? BUILT_IN_BOOKS.find((entry) => entry.id === activeBuiltInBookId)
-        : customBooks.find((entry) => entry.id === activeCustomBookId);
+      const activeBook = wordbookController.activeBook();
       const remembered = await rememberVocabulary({
         fileNames: activeBook ? [activeBook.fileName] : []
       });
