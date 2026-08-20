@@ -6,6 +6,7 @@ const personalWordbooksPath = path.join(wordbooksPath, 'my');
 const defaultBookFileName = 'cet-4-vocabulary.html';
 const outputPath = path.join(__dirname, 'vocabulary-flashcards.html');
 const memoryCorePath = path.join(__dirname, 'memory-curve-core.js');
+const animationCoordinatorPath = path.join(__dirname, 'src', 'animations', 'animation-coordinator.js');
 const fsrsEntryPath = require.resolve('ts-fsrs');
 const fsrsBrowserBundlePath = path.join(path.dirname(fsrsEntryPath), 'index.umd.js');
 const fsrsPackagePath = path.join(path.dirname(fsrsEntryPath), '..', 'package.json');
@@ -161,6 +162,7 @@ const embeddedPersonalBooks = JSON.stringify(personalBooks).replace(/</g, '\\u00
 const embeddedDefaultBookId = JSON.stringify(defaultBuiltInBook.id);
 const embeddedLegacyBuiltInBookIds = JSON.stringify(legacyBuiltInBookIds);
 const embeddedMemoryCore = fs.readFileSync(memoryCorePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
+const embeddedAnimationCoordinator = fs.readFileSync(animationCoordinatorPath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const embeddedFsrsBundle = fs.readFileSync(fsrsBrowserBundlePath, 'utf8').replace(/[ \t]+$/gm, '').replace(/<\/script/gi, '<\\/script');
 const fsrsPackageVersion = JSON.parse(fs.readFileSync(fsrsPackagePath, 'utf8')).version;
 const embeddedFsrsPackageVersion = JSON.stringify(fsrsPackageVersion);
@@ -2836,6 +2838,7 @@ const output = `<!doctype html>
   </div>
 
   <script>${embeddedMemoryCore}</script>
+  <script>${embeddedAnimationCoordinator}</script>
   <script>/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}</script>
   <script>
     const BUILT_IN_BOOKS = ${embeddedBuiltInBooks};
