@@ -3849,6 +3849,31 @@ const output = `<!doctype html>
       focusMemorySurface();
     }
 
+    function cancelActiveCardTransition(reason = 'interrupted') {
+      if (animationCoordinator.isIdle) return false;
+      animationCoordinator.cancelActive(reason);
+      if (memoryClosing) {
+        finishMemoryReviewClose();
+        return true;
+      }
+
+      memoryBackdrop.querySelectorAll('.memory-panel--incoming, .memory-panel--yielding').forEach((panel) => panel.remove());
+      memoryPanel.classList.remove(
+        'memory-panel--flight',
+        'memory-panel--incoming',
+        'memory-panel--returning',
+        'is-flying-out'
+      );
+      memoryPanel.style.removeProperty('visibility');
+      clearExitPoint(memoryPanel);
+      memoryBackdrop.classList.remove('is-transitioning', 'is-card-advancing', 'is-undo-returning');
+      cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing');
+      isTransitioning = false;
+      if (memoryIsOpen) renderMemoryCard(false);
+      renderStable();
+      return true;
+    }
+
     async function refreshMemoryCompletion() {
       if (!memoryIsOpen || memoryCurrentItem()) return;
       try {
@@ -4027,8 +4052,12 @@ const output = `<!doctype html>
         else memorySessionReviewed += 1;
         item.record = afterRecord;
         memoryIndex += 1;
-        transition.move('exiting-current');
-        await transitionMemoryCardAfterRating(exitPoint, rating === window.FSRS.Rating.Good, transition);
+        if (transition.isActive()) {
+          transition.move('exiting-current');
+          await transitionMemoryCardAfterRating(exitPoint, rating === window.FSRS.Rating.Good, transition);
+        } else {
+          renderMemoryCard(false);
+        }
         refreshMemorySummary();
       } catch (error) {
         transition.cancel('rating-failed');
@@ -4088,7 +4117,8 @@ const output = `<!doctype html>
       if (action.wasNew) memorySessionNew = Math.max(0, memorySessionNew - 1);
       else memorySessionReviewed = Math.max(0, memorySessionReviewed - 1);
       try {
-        await transitionMemoryCardAfterUndo(action.exitPoint, transition);
+        if (transition.isActive()) await transitionMemoryCardAfterUndo(action.exitPoint, transition);
+        else renderMemoryCard(false);
       } catch {
         transition.cancel('undo-animation-failed');
         renderMemoryCard(false);
@@ -5434,6 +5464,10 @@ const output = `<!doctype html>
     deckStage.addEventListener('pointerdown', startClassicSwipe);
     deckStage.addEventListener('pointerup', finishClassicSwipe);
     deckStage.addEventListener('pointercancel', cancelClassicSwipe);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) cancelActiveCardTransition('document-hidden');
+    });
+    window.addEventListener('pagehide', () => cancelActiveCardTransition('page-hidden'));
     themeButton.addEventListener('click', () => {
       setTheme(document.documentElement.dataset.theme === 'playful' ? 'classic' : 'playful');
     });

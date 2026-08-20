@@ -62,6 +62,34 @@ test("经典模式快速重复前进只提交一次切换", async ({ page }, tes
   ).toHaveCount(0);
 });
 
+test("页面隐藏会取消进行中的经典切卡并恢复稳定 DOM", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  const currentCard = page.locator('.deck-card[data-offset="0"]');
+  const initialPosition = await currentCard.getAttribute("data-deck-position");
+  await page.locator("#nextButton").click();
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "revealing-incoming",
+  );
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "idle",
+  );
+  await expect(currentCard).toHaveAttribute(
+    "data-deck-position",
+    initialPosition,
+  );
+  await expect(page.locator('.deck-card[data-offset="0"]')).toHaveCount(1);
+  await expect(page.locator(".card-layer")).not.toHaveClass(/is-transitioning/);
+  await expect(
+    page.locator(".is-flying-out, .is-returning, .is-yielding, .is-incoming"),
+  ).toHaveCount(0);
+});
+
 test("减少动态效果时经典切卡立即稳定且不创建临时状态", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.reload();
@@ -110,6 +138,105 @@ test("记忆模式 Good 评分推进一次并清理动画状态", async ({ page 
       ".memory-panel--flight, .memory-panel--incoming, .memory-panel--yielding",
     ),
   ).toHaveCount(0);
+});
+
+test("记忆模式快速重复评分只推进一次", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryGoodButton")).toBeEnabled();
+  const progress = page.locator("#memoryProgressText");
+  const initialIndex = Number((await progress.textContent()).split("/")[0]);
+  await page.evaluate(() => {
+    document.querySelector("#memoryGoodButton").click();
+    document.querySelector("#memoryGoodButton").click();
+  });
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "idle",
+  );
+  const settledIndex = Number((await progress.textContent()).split("/")[0]);
+  expect(settledIndex).toBe(initialIndex + 1);
+  await expect(
+    page.locator(
+      ".memory-panel--flight, .memory-panel--incoming, .memory-panel--yielding",
+    ),
+  ).toHaveCount(0);
+});
+
+test("记忆模式点击后方叠卡等同 Good 并保留前进动画", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryGoodButton")).toBeEnabled();
+  const initialWord = await page.locator("#memoryCardWord").textContent();
+  const stackedCard = page.locator('.deck-card[data-offset="1"]');
+  await stackedCard.evaluate((card) => card.click());
+
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "revealing-incoming",
+  );
+  await expect(page.locator(".memory-panel--flight")).toHaveCount(1);
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "idle",
+  );
+  await expect(page.locator("#memoryCardWord")).not.toHaveText(initialWord);
+});
+
+test("记忆动画被页面隐藏打断后保留评分并恢复稳定主卡", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryGoodButton")).toBeEnabled();
+  const progress = page.locator("#memoryProgressText");
+  const initialProgress = await progress.textContent();
+  await page.locator("#memoryGoodButton").click();
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "revealing-incoming",
+  );
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "idle",
+  );
+  await expect(progress).not.toHaveText(initialProgress);
+  await expect(
+    page.locator('#memoryBackdrop > .memory-panel[role="region"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.locator(
+      ".memory-panel--flight, .memory-panel--incoming, .memory-panel--yielding",
+    ),
+  ).toHaveCount(0);
+});
+
+test("记忆模式 Good 不可用时点击后方叠卡只触发抖动", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryGoodButton")).toBeEnabled();
+  const progress = page.locator("#memoryProgressText");
+  const initialProgress = await progress.textContent();
+  await page.locator("#memoryModeButton").click();
+  await expect(page.locator("#memoryGoodButton")).toBeDisabled();
+  await page
+    .locator('.deck-card[data-offset="1"]')
+    .evaluate((card) => card.click());
+
+  await expect(
+    page.locator('#memoryBackdrop > .memory-panel[role="region"]'),
+  ).toHaveClass(/is-good-blocked/);
+  await expect(page.locator(".deck-stage")).toHaveAttribute(
+    "data-animation-state",
+    "idle",
+  );
+  await expect(progress).toHaveText(initialProgress);
 });
 
 test("记忆模式由真实主面板飞出且后方卡片独立进入", async ({
