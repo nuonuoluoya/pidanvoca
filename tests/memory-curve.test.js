@@ -1,16 +1,7 @@
 const assert = require('node:assert/strict');
+const test = require('node:test');
 const Core = require('../memory-curve-core');
 const FSRS = require('ts-fsrs');
-
-function test(name, run) {
-  try {
-    run();
-    console.log('✓ ' + name);
-  } catch (error) {
-    console.error('✗ ' + name);
-    throw error;
-  }
-}
 
 test('规范化单词键保留实际标点并统一空白和大小写', () => {
   assert.equal(Core.normalizeWordKey('  Tit\u3000For   Tat  '), 'tit for tat');
@@ -80,5 +71,3 @@ test('备份格式校验拒绝不兼容版本', () => {
     metaEntries: []
   }).valid, true);
 });
-
-console.log('记忆曲线逻辑测试全部通过。');
