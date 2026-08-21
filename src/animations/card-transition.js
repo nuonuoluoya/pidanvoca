@@ -26,7 +26,10 @@
           if (settled) return;
           settled = true;
           element.removeEventListener("transitionend", handleTransitionEnd);
-          element.removeEventListener("transitioncancel", finish);
+          element.removeEventListener(
+            "transitioncancel",
+            handleTransitionCancel,
+          );
           clock.clearTimeout(fallbackTimer);
           resolve();
         };
@@ -35,8 +38,13 @@
             finish();
           }
         };
+        const handleTransitionCancel = (event) => {
+          if (event.target === element && event.propertyName === propertyName) {
+            finish();
+          }
+        };
         element.addEventListener("transitionend", handleTransitionEnd);
-        element.addEventListener("transitioncancel", finish);
+        element.addEventListener("transitioncancel", handleTransitionCancel);
         fallbackTimer = clock.setTimeout(
           finish,
           Math.max(0, Number(fallbackMilliseconds) || 0),

@@ -9,6 +9,30 @@ const defaultBookFileName = "cet-4-vocabulary.html";
 const outputPath = path.join(__dirname, "vocabulary-flashcards.html");
 const dataPath = path.join(__dirname, "data");
 const dataBooksPath = path.join(dataPath, "books");
+const playfulCloudLeftPath = path.join(
+  __dirname,
+  "assets",
+  "playful-paper-cloud.png",
+);
+const playfulCloudRightPath = path.join(
+  __dirname,
+  "assets",
+  "playful-paper-cloud-right.png",
+);
+const playfulSunPath = path.join(
+  __dirname,
+  "assets",
+  "playful-paper-sun.png",
+);
+const playfulCloudLeftDataUri = `data:image/png;base64,${fs
+  .readFileSync(playfulCloudLeftPath)
+  .toString("base64")}`;
+const playfulCloudRightDataUri = `data:image/png;base64,${fs
+  .readFileSync(playfulCloudRightPath)
+  .toString("base64")}`;
+const playfulSunDataUri = `data:image/png;base64,${fs
+  .readFileSync(playfulSunPath)
+  .toString("base64")}`;
 const webOutputPath = path.join(__dirname, "dist", "web", "index.html");
 const webServiceWorkerPath = path.join(
   __dirname,
@@ -473,6 +497,12 @@ const output = `<!doctype html>
       --radius: 22px;
       --settings-panel-width: clamp(270px, 24vw, 320px);
       --settings-page-offset: -2px;
+      --card-return-duration: 620ms;
+      --card-return-easing: cubic-bezier(0.16, 1, 0.3, 1);
+      --card-return-fade-duration: 460ms;
+      --card-stack-duration: 640ms;
+      --card-stack-easing: cubic-bezier(0.4, 0, 0.2, 1);
+      --card-stack-fade-duration: 500ms;
     }
 
     * { box-sizing: border-box; }
@@ -1100,17 +1130,20 @@ const output = `<!doctype html>
       background: linear-gradient(90deg, transparent, rgba(66, 91, 120, 0.14));
       opacity: 0;
       pointer-events: none;
-      transition: opacity 480ms ease;
+      transition: opacity 180ms ease;
     }
 
     body.settings-open .app {
       border-radius: 0 26px 26px 0;
-      box-shadow: 24px 0 52px rgba(42, 66, 94, 0.2);
       transform: translate3d(calc(var(--settings-page-offset) - var(--settings-panel-width)), 0, 0) rotateY(-2.2deg) scale(0.992);
       pointer-events: none;
     }
 
-    body.settings-open .app::after { opacity: 1; }
+    body.settings-open .app,
+    body.settings-closing .app { box-shadow: 24px 0 52px rgba(42, 66, 94, 0.2); }
+
+    body.settings-open .app::after,
+    body.settings-closing .app::after { opacity: 1; }
 
     .settings-toggle {
       position: fixed;
@@ -1166,37 +1199,6 @@ const output = `<!doctype html>
 
     body.settings-open .settings-toggle::before { opacity: 1; }
     body.settings-open .settings-toggle .icon { transform: rotate(52deg); }
-
-    .theme-toggle {
-      position: fixed;
-      top: 24px;
-      right: 144px;
-      z-index: 70;
-      width: 44px;
-      height: 44px;
-      display: grid;
-      place-items: center;
-      padding: 0;
-      border: 1px solid rgba(102, 161, 202, 0.22);
-      border-radius: 50%;
-      color: #3f8fc5;
-      background: linear-gradient(145deg, rgba(238,248,255,0.98), rgba(201,229,247,0.94));
-      box-shadow: 0 8px 24px rgba(67,125,166,0.12), inset 0 1px 0 rgba(255,255,255,0.86);
-      cursor: pointer;
-      isolation: isolate;
-      transition: transform 180ms ease, color 240ms ease, background 240ms ease, border-color 240ms ease, box-shadow 240ms ease;
-      backdrop-filter: blur(14px);
-    }
-
-    .theme-toggle:hover {
-      color: var(--accent);
-      background: linear-gradient(145deg, #f5fbff, #bfdef3);
-      box-shadow: 0 10px 28px rgba(67,125,166,0.18), inset 0 1px 0 rgba(255,255,255,0.92);
-    }
-
-    .theme-toggle:active { transform: scale(0.94); }
-    .theme-toggle .icon { width: 23px; height: 23px; transition: transform 420ms cubic-bezier(0.2,0.8,0.2,1); }
-    html[data-theme="playful"] .theme-toggle .icon { transform: rotate(24deg) scale(1.06); }
 
     .memory-toggle {
       position: fixed;
@@ -1290,8 +1292,8 @@ const output = `<!doctype html>
       display: block;
       padding: 0;
       background: transparent;
-      opacity: 0;
-      transition: opacity 240ms ease, transform 300ms cubic-bezier(0.2,0.8,0.2,1);
+      opacity: 1;
+      transition: transform 300ms cubic-bezier(0.2,0.8,0.2,1);
     }
 
     .memory-backdrop[hidden] { display: none; }
@@ -1337,18 +1339,16 @@ const output = `<!doctype html>
     }
 
     .memory-backdrop.is-returning-to-classic {
-      opacity: 0;
+      opacity: 1;
       pointer-events: none;
-      transition: opacity 360ms ease-in;
     }
 
     .memory-backdrop.is-returning-to-classic > .memory-panel:not(.memory-panel--flight) {
-      opacity: 0;
+      opacity: 1;
       filter: saturate(0.82) brightness(0.99);
       transform: translateZ(-150px) rotateY(14deg) scale(0.94);
       transition:
         transform 620ms cubic-bezier(0.16, 1, 0.3, 1),
-        opacity 360ms ease-in,
         filter 360ms ease-in,
         box-shadow 360ms ease;
     }
@@ -1411,15 +1411,30 @@ const output = `<!doctype html>
       inset: 0;
       z-index: 10;
       pointer-events: none;
+      will-change: transform, filter, box-shadow;
+      transition:
+        transform var(--card-stack-duration) var(--card-stack-easing),
+        filter var(--card-stack-fade-duration) ease,
+        box-shadow var(--card-stack-fade-duration) ease;
+    }
+
+    .memory-panel--yielding > * {
+      transition: none;
     }
 
     .memory-backdrop.is-visible > .memory-panel.memory-panel--returning {
+      position: absolute;
+      inset: 0;
       z-index: 20;
       opacity: 1;
       filter: none;
-      transform: translate3d(var(--fly-x), var(--fly-y), 0) scale(1);
-      will-change: transform;
-      transition: transform 560ms cubic-bezier(0.22, 0.78, 0.26, 1);
+      transform: translate3d(var(--fly-x), var(--fly-y), 160px) rotateZ(var(--fly-rotate)) rotateY(-18deg) scale(0.72);
+      will-change: transform, opacity, filter, box-shadow;
+      box-shadow: 0 32px 76px rgba(69,96,130,0.22);
+      transition:
+        transform var(--card-return-duration) var(--card-return-easing),
+        filter var(--card-return-fade-duration) ease-out,
+        box-shadow var(--card-return-fade-duration) ease;
     }
 
     .memory-backdrop.is-undo-returning > .memory-panel.memory-panel--returning {
@@ -1430,8 +1445,13 @@ const output = `<!doctype html>
     .memory-backdrop.is-undo-returning > .memory-panel--yielding {
       z-index: 10;
       opacity: 1;
-      filter: none;
-      transform: translate3d(0, 0, 0) scale(1);
+      filter: saturate(0.82) brightness(0.99);
+      transform: translate3d(0, 20px, -260px) scale(0.86);
+      box-shadow: 0 14px 36px rgba(69,96,130,0.09);
+    }
+
+    .memory-backdrop.is-undo-returning > .memory-panel--yielding > * {
+      opacity: 0;
     }
 
     .memory-header,
@@ -1585,15 +1605,13 @@ const output = `<!doctype html>
       background: #fff;
       border-left: 1px solid rgba(112, 132, 154, 0.12);
       box-shadow: inset 18px 0 36px rgba(87, 110, 136, 0.04);
-      opacity: 0;
+      opacity: 1;
       overflow-y: auto;
       transform: translateX(0);
       pointer-events: none;
-      transition: opacity 360ms ease 90ms;
     }
 
     body.settings-open .settings-drawer {
-      opacity: 1;
       transform: translateX(0);
       pointer-events: auto;
     }
@@ -1639,6 +1657,7 @@ const output = `<!doctype html>
 
     .settings-action:active { transform: scale(0.98); }
     .settings-action:disabled { opacity: 0.46; cursor: wait; }
+    .settings-action[hidden] { display: none; }
     .settings-action .icon { width: 21px; height: 21px; }
 
     .settings-action__chevron {
@@ -2018,7 +2037,6 @@ const output = `<!doctype html>
 
       .settings-toggle { top: 10px; right: 14px; width: 42px; height: 42px; }
       .memory-toggle { top: 10px; right: 66px; width: 42px; height: 42px; }
-      .theme-toggle { top: 10px; right: 118px; width: 42px; height: 42px; }
       .settings-drawer { padding: 78px 18px 22px; }
       .settings-action { min-height: 52px; padding: 0 14px; }
       .memory-backdrop { padding: 0; }
@@ -2030,13 +2048,13 @@ const output = `<!doctype html>
         transform: translateZ(-80px) rotateY(12deg) scale(0.95);
       }
       .memory-backdrop.is-visible > .memory-panel.memory-panel--returning {
-        transform: translate3d(var(--fly-x), var(--fly-y), 0) scale(1);
+        transform: translate3d(var(--fly-x), var(--fly-y), 90px) rotateZ(var(--fly-rotate)) rotateY(-14deg) scale(0.76);
       }
       .memory-backdrop.is-undo-returning > .memory-panel.memory-panel--returning {
         transform: translate3d(0, 0, 0) scale(1);
       }
       .memory-backdrop.is-undo-returning > .memory-panel--yielding {
-        transform: translate3d(0, 0, 0) scale(1);
+        transform: translate3d(0, 14px, -150px) scale(0.88);
       }
       .memory-card { min-height: 0; padding: 20px 18px; }
       .memory-actions { gap: 6px; }
@@ -2183,11 +2201,10 @@ const output = `<!doctype html>
       transform-style: preserve-3d;
       will-change: transform, opacity, filter;
       transition:
-        transform 640ms cubic-bezier(0.4, 0, 0.2, 1),
+        transform var(--card-stack-duration) var(--card-stack-easing),
         translate 180ms ease,
-        opacity 500ms ease,
-        filter 500ms ease,
-        box-shadow 500ms ease;
+        filter var(--card-stack-fade-duration) ease,
+        box-shadow var(--card-stack-fade-duration) ease;
     }
 
     .card-scroll {
@@ -2210,14 +2227,14 @@ const output = `<!doctype html>
       pointer-events: auto;
     }
 
-    .deck-card[data-offset="-1"] { z-index: 8; opacity: 0.82; filter: saturate(0.82) brightness(0.99); transform: translateZ(-150px) rotateY(-14deg) scale(0.94); }
-    .deck-card[data-offset="1"]  { z-index: 8; opacity: 0.82; filter: saturate(0.82) brightness(0.99); transform: translateZ(-150px) rotateY(14deg) scale(0.94); }
-    .deck-card[data-offset="-2"] { z-index: 6; opacity: 0.5; filter: saturate(0.7) brightness(1.01); transform: translateZ(-310px) rotateY(-26deg) scale(0.86); }
-    .deck-card[data-offset="2"]  { z-index: 6; opacity: 0.5; filter: saturate(0.7) brightness(1.01); transform: translateZ(-310px) rotateY(26deg) scale(0.86); }
-    .deck-card[data-offset="-3"] { z-index: 4; opacity: 0.24; filter: saturate(0.55) brightness(1.02); transform: translateZ(-470px) rotateY(-36deg) scale(0.78); }
-    .deck-card[data-offset="3"]  { z-index: 4; opacity: 0.24; filter: saturate(0.55) brightness(1.02); transform: translateZ(-470px) rotateY(36deg) scale(0.78); }
-    .deck-card[data-offset="-4"] { z-index: 2; opacity: 0; filter: saturate(0.4); transform: translateZ(-620px) rotateY(-44deg) scale(0.72); }
-    .deck-card[data-offset="4"]  { z-index: 2; opacity: 0; filter: saturate(0.4); transform: translateZ(-620px) rotateY(44deg) scale(0.72); }
+    .deck-card[data-offset="-1"] { z-index: 8; opacity: 1; filter: saturate(0.82) brightness(0.99); transform: translateZ(-150px) rotateY(-14deg) scale(0.94); }
+    .deck-card[data-offset="1"]  { z-index: 8; opacity: 1; filter: saturate(0.82) brightness(0.99); transform: translateZ(-150px) rotateY(14deg) scale(0.94); }
+    .deck-card[data-offset="-2"] { z-index: 6; opacity: 1; filter: saturate(0.7) brightness(1.01); transform: translateZ(-310px) rotateY(-26deg) scale(0.86); }
+    .deck-card[data-offset="2"]  { z-index: 6; opacity: 1; filter: saturate(0.7) brightness(1.01); transform: translateZ(-310px) rotateY(26deg) scale(0.86); }
+    .deck-card[data-offset="-3"] { z-index: 4; opacity: 1; filter: saturate(0.55) brightness(1.02); transform: translateZ(-470px) rotateY(-36deg) scale(0.78); }
+    .deck-card[data-offset="3"]  { z-index: 4; opacity: 1; filter: saturate(0.55) brightness(1.02); transform: translateZ(-470px) rotateY(36deg) scale(0.78); }
+    .deck-card[data-offset="-4"] { z-index: 2; opacity: 1; filter: saturate(0.4); transform: translateZ(-620px) rotateY(-44deg) scale(0.72); }
+    .deck-card[data-offset="4"]  { z-index: 2; opacity: 1; filter: saturate(0.4); transform: translateZ(-620px) rotateY(44deg) scale(0.72); }
 
     .deck-card.is-incoming { z-index: 11 !important; }
 
@@ -2237,13 +2254,12 @@ const output = `<!doctype html>
     }
 
     .deck-card.is-returning {
-      opacity: 0;
+      opacity: 1;
       transform: translate3d(var(--fly-x), var(--fly-y), 160px) rotateZ(var(--fly-rotate)) rotateY(-18deg) scale(0.72);
       transition:
-        transform 620ms cubic-bezier(0.16, 1, 0.3, 1),
-        opacity 460ms ease-out,
-        filter 460ms ease-out,
-        box-shadow 460ms ease;
+        transform var(--card-return-duration) var(--card-return-easing),
+        filter var(--card-return-fade-duration) ease-out,
+        box-shadow var(--card-return-fade-duration) ease;
     }
 
     .deck-card.is-yielding { z-index: 10 !important; }
@@ -2274,7 +2290,7 @@ const output = `<!doctype html>
 
       .deck-card[data-offset="1"]:hover {
         translate: -6px 0;
-        opacity: 0.9;
+        opacity: 1;
         filter: saturate(0.92) brightness(1.015);
         box-shadow: 0 18px 44px rgba(64,126,173,0.16);
       }
@@ -2288,7 +2304,7 @@ const output = `<!doctype html>
       body.memory-mode:not(.memory-good-enabled) .deck-card[data-offset="1"] { cursor: not-allowed; }
       body.memory-mode:not(.memory-good-enabled) .deck-card[data-offset="1"]:hover {
         translate: -3px 0;
-        opacity: 0.78;
+        opacity: 1;
         filter: saturate(0.68) brightness(1.01);
       }
     }
@@ -2312,6 +2328,13 @@ const output = `<!doctype html>
       transition-delay: 60ms;
     }
 
+    .deck-card.is-returning > *,
+    .card-layer.is-transitioning .deck-card.is-returning > * {
+      opacity: 1 !important;
+      visibility: visible !important;
+      transition: none !important;
+    }
+
     .card-layer.is-memory-advancing .deck-card > * {
       opacity: 0 !important;
       visibility: hidden !important;
@@ -2320,7 +2343,15 @@ const output = `<!doctype html>
     .card-layer.is-memory-advancing .deck-card.is-memory-hidden-current {
       opacity: 0 !important;
       pointer-events: none !important;
-      transition: opacity 140ms ease-out;
+    }
+
+    .card-layer.is-memory-retreating {
+      pointer-events: none;
+    }
+
+    .card-layer.is-memory-retreating .deck-card > * {
+      opacity: 0 !important;
+      visibility: hidden !important;
     }
 
     .card-layer.is-memory-returning {
@@ -2329,7 +2360,7 @@ const output = `<!doctype html>
     }
 
     .card-layer.is-memory-returning .deck-card:not(.is-returning) {
-      opacity: 0 !important;
+      opacity: 1 !important;
     }
 
     .card-word-row {
@@ -2578,59 +2609,50 @@ const output = `<!doctype html>
       --accent-dark: #bf4f5b;
       --shadow: 0 24px 0 rgba(78, 58, 66, 0.06), 0 28px 62px rgba(55, 105, 139, 0.24);
       --radius: 30px;
+      --playful-cloud-left: url("${playfulCloudLeftDataUri}");
+      --playful-cloud-right: url("${playfulCloudRightDataUri}");
+      --playful-sun: url("${playfulSunDataUri}");
     }
 
     html[data-theme="playful"] body {
       color: var(--text);
       font-family: "Segoe Print", "Comic Sans MS", "KaiTi", "STKaiti", "PingFang SC", "Microsoft YaHei", sans-serif;
       background-color: #78c7ed;
-      background-image:
-        radial-gradient(ellipse at 13% 14%, rgba(255,255,255,0.76) 0 2.8%, transparent 3%),
-        radial-gradient(ellipse at 82% 18%, rgba(255,255,255,0.68) 0 3.2%, transparent 3.4%),
-        radial-gradient(circle at 8% 74%, rgba(255,255,255,0.2) 0 3px, transparent 4px),
-        radial-gradient(circle at 92% 66%, rgba(255,255,255,0.18) 0 4px, transparent 5px),
-        repeating-linear-gradient(105deg, rgba(255,255,255,0.025) 0 2px, rgba(63,133,177,0.025) 2px 5px),
-        linear-gradient(180deg, #82cef0 0%, #6bbce6 100%);
+      background-image: linear-gradient(180deg, #82cef0 0%, #6bbce6 100%);
+      background-repeat: no-repeat;
       -webkit-font-smoothing: antialiased;
     }
 
-    html[data-theme="playful"] body::after {
-      content: "";
-      position: fixed;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      z-index: 0;
-      height: 88px;
-      background:
-        radial-gradient(70px 34px at 35px 0, transparent 63%, rgba(32,136,202,0.2) 65% 70%, transparent 72%) 0 0 / 140px 54px repeat-x,
-        linear-gradient(180deg, rgba(77,174,224,0.08), rgba(24,128,196,0.22));
-      pointer-events: none;
+    html[data-theme="playful"] .app {
+      background-color: #78c7ed;
+      background-image:
+        var(--playful-cloud-left),
+        var(--playful-cloud-right),
+        var(--playful-sun),
+        linear-gradient(180deg, #82cef0 0%, #6bbce6 100%);
+      background-position:
+        left clamp(36px, 5vw, 92px) top clamp(42px, 7vh, 82px),
+        right clamp(46px, 8vw, 140px) top clamp(62px, 10vh, 112px),
+        left calc(clamp(36px, 5vw, 92px) + clamp(108px, 9.2vw, 162px)) top clamp(10px, 2.5vh, 24px),
+        0 0;
+      background-size:
+        clamp(220px, 19vw, 330px) auto,
+        clamp(168px, 12vw, 220px) auto,
+        clamp(94px, 8.5vw, 145px) auto,
+        100% 100%;
+      background-repeat: no-repeat;
     }
 
-    html[data-theme="playful"] .app {
-      background:
-        radial-gradient(circle at 50% 38%, rgba(255,255,255,0.44), transparent 56%),
-        transparent;
+    html[data-theme="playful"] body::after {
+      display: none;
     }
 
     html[data-theme="playful"] .scene::before {
-      width: min(1100px, 86vw);
-      height: min(640px, 74vh);
-      background: radial-gradient(ellipse, rgba(255,255,255,0.36), transparent 70%);
-      filter: blur(10px);
+      display: none;
     }
 
     html[data-theme="playful"] .orbit {
-      bottom: 24px;
-      height: 180px;
-      border: 0;
-      border-radius: 50% 50% 0 0;
-      background:
-        radial-gradient(95px 46px at 48px 15px, transparent 61%, rgba(255,255,255,0.46) 63% 67%, transparent 69%) 0 0 / 190px 70px repeat-x,
-        linear-gradient(180deg, rgba(88,190,235,0.16), rgba(23,133,204,0.24));
-      box-shadow: none;
-      opacity: 0.9;
+      display: none;
     }
 
     html[data-theme="playful"] .deck-card {
@@ -2744,7 +2766,6 @@ const output = `<!doctype html>
     html[data-theme="playful"] .nav-button__icon .icon { width: 42px; height: 42px; stroke-width: 3.7; }
     html[data-theme="playful"] .nav-button:hover:not(:disabled) { opacity: 1; filter: brightness(1.05); }
 
-    html[data-theme="playful"] .theme-toggle,
     html[data-theme="playful"] .memory-toggle,
     html[data-theme="playful"] .settings-toggle {
       border: 5px solid #fff7e5;
@@ -2755,10 +2776,8 @@ const output = `<!doctype html>
     }
     html[data-theme="playful"] .memory-toggle { background: #58aee3; }
     html[data-theme="playful"] .settings-toggle { background: #a984ca; }
-    html[data-theme="playful"] .theme-toggle:hover,
     html[data-theme="playful"] .memory-toggle:hover,
     html[data-theme="playful"] .settings-toggle:hover { color: #fff; filter: brightness(1.04); }
-    html[data-theme="playful"] .theme-toggle[aria-pressed="true"] { background: #f3c33d; }
     html[data-theme="playful"] body.settings-open .memory-toggle::before,
     html[data-theme="playful"] body.settings-open .settings-toggle::before { opacity: 0; }
     html[data-theme="playful"] .memory-badge { border-color: #fff7e5; background: #e96872; }
@@ -2788,6 +2807,7 @@ const output = `<!doctype html>
       font-weight: 800;
     }
     html[data-theme="playful"] #memorySettingsButton { background: #9aca58; }
+    html[data-theme="playful"] #themeButton { background: #a984ca; }
     html[data-theme="playful"] #shuffleButton { background: #eb745d; }
     html[data-theme="playful"] #importButton { background: #efbd3f; }
     html[data-theme="playful"] .settings-action:hover { color: #fff; border-color: #fff7e5; background: #4ea5da; transform: translateY(-1px); }
@@ -2899,7 +2919,6 @@ const output = `<!doctype html>
       html[data-theme="playful"] .deck-card .dictionary-button,
       html[data-theme="playful"] .deck-card .study-mode-button { width: 38px; height: 38px; border-width: 3px; }
       html[data-theme="playful"] .card-word { text-decoration-thickness: 4px; text-underline-offset: 9px; }
-      html[data-theme="playful"] .orbit { bottom: 12px; width: 150vw; height: 130px; }
       html[data-theme="playful"] .memory-panel { border-width: 6px; border-radius: 24px; padding: 13px; }
       html[data-theme="playful"] .memory-card { border-radius: 20px; padding: 22px 17px; }
       html[data-theme="playful"] .memory-rating { border-width: 4px; border-radius: 20px; }
@@ -2922,9 +2941,6 @@ const output = `<!doctype html>
   </style>
 </head>
 <body data-study-mode="full">
-  <button class="theme-toggle" id="themeButton" type="button" aria-label="启用童趣主题" aria-pressed="false" title="启用童趣主题">
-    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.7 5.2L19 9l-4.3 3.2 1.6 5.3L12 14.3 7.7 17.5l1.6-5.3L5 9l5.3-1.8L12 2Z"></path><path d="M4 17.5 2.5 19M19.5 4.5 21 3M19 19l2 2M3 3l2 2"></path></svg>
-  </button>
   <button class="memory-toggle" id="memoryButton" type="button" aria-label="打开今日复习" aria-pressed="false" title="今日复习" disabled>
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.2A4 4 0 0 0 5 9.1c0 .5.1 1 .3 1.4A3.5 3.5 0 0 0 7 17h2.5"></path><path d="M10 4v14"></path><path d="M10 7.5H8M10 12H7.5M10 16H8"></path><circle cx="16.5" cy="15.5" r="4.5"></circle><path d="M16.5 13v2.8l1.8 1"></path></svg>
     <span class="memory-badge" id="memoryBadge" hidden>0</span>
@@ -3007,7 +3023,11 @@ const output = `<!doctype html>
           </div>
         </details>
       </div>
-      <button class="settings-action" id="shuffleButton" type="button" aria-label="随机重排" title="重新随机排序（R）">
+      <button class="settings-action" id="themeButton" type="button" aria-label="启用童趣主题" aria-pressed="false" title="启用童趣主题">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.7 5.2L19 9l-4.3 3.2 1.6 5.3L12 14.3 7.7 17.5l1.6-5.3L5 9l5.3-1.8L12 2Z"></path><path d="M4 17.5 2.5 19M19.5 4.5 21 3M19 19l2 2M3 3l2 2"></path></svg>
+        <span>主题切换</span>
+      </button>
+      <button class="settings-action" id="shuffleButton" type="button" aria-label="随机重排" title="重新随机排序（R）" hidden>
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3h5v5"></path><path d="M4 20 21 3"></path><path d="M21 16v5h-5"></path><path d="m15 15 6 6"></path><path d="M4 4l5 5"></path></svg>
         <span>随机重排</span>
       </button>
@@ -3084,9 +3104,6 @@ const output = `<!doctype html>
           </button>
           <button class="memory-icon-button" id="memoryUndoButton" type="button" aria-label="撤销上次评分" title="撤销上次评分（Ctrl/⌘ + Z）" disabled>
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7-5 5 5 5"></path><path d="M4 12h9a6 6 0 0 1 6 6"></path></svg>
-          </button>
-          <button class="memory-icon-button" id="memoryCloseButton" type="button" aria-label="返回经典模式" title="返回经典模式（Esc）">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
           </button>
         </div>
       </header>
@@ -3208,6 +3225,7 @@ const output = `<!doctype html>
     const settingsController = new window.PidanvocaSettings.SettingsController({
       theme: document.documentElement.dataset.theme
     });
+    let settingsShadowFallbackTimer = 0;
 
     function normalizeStudySize(value) {
       return window.PidanvocaStorage.normalizeStudySize(value, defaultStudySize);
@@ -3429,6 +3447,7 @@ const output = `<!doctype html>
       return localVocabulary;
     }
 
+    const app = document.querySelector('.app');
     const deckStage = document.querySelector('.deck-stage');
     const cardLayer = document.getElementById('cardLayer');
     const previousButton = document.getElementById('previousButton');
@@ -3477,7 +3496,6 @@ const output = `<!doctype html>
     const memoryResetAllButton = document.getElementById('memoryResetAllButton');
     const memoryBackdrop = document.getElementById('memoryBackdrop');
     const memoryPanel = document.querySelector('.memory-panel');
-    const memoryCloseButton = document.getElementById('memoryCloseButton');
     const memoryModeButton = document.getElementById('memoryModeButton');
     const memoryUndoButton = document.getElementById('memoryUndoButton');
     const memoryProgressText = document.getElementById('memoryProgressText');
@@ -4068,6 +4086,33 @@ const output = `<!doctype html>
       bringCurrentCardForward(cards);
     }
 
+    function prepareMemoryStackRetreat() {
+      const cards = synchronizeCards(position);
+      cardLayer.replaceChildren(...cards);
+      bringCurrentCardForward(cards);
+      cardLayer.classList.add('is-memory-retreating');
+      void cardLayer.offsetWidth;
+      return {
+        cards,
+        leadingCard: cards.find((card) => Number(card.dataset.deckPosition) === position)
+      };
+    }
+
+    function startMemoryStackRetreat(retreat) {
+      retreat.cards.forEach((card) => {
+        const deckPosition = Number(card.dataset.deckPosition);
+        setCardOffset(card, deckPosition - position + 1);
+      });
+    }
+
+    function finishMemoryStackRetreat(retreat) {
+      if (!retreat) return;
+      cardLayer.classList.remove('is-memory-retreating');
+      const cards = synchronizeCards(position);
+      cardLayer.replaceChildren(...cards);
+      bringCurrentCardForward(cards);
+    }
+
     async function transitionMemoryCardAfterRating(exitPoint, advanceFromStack, transition) {
       if (reducedMotion.matches) {
         renderMemoryCard();
@@ -4125,22 +4170,35 @@ const output = `<!doctype html>
       }
       const yieldingPanel = cloneMemoryPanelForTransition('memory-panel--yielding');
       memoryBackdrop.append(yieldingPanel);
+      const stackRetreat = prepareMemoryStackRetreat();
+      // The live memory panel is already rendered at the center. Snap it to the
+      // recorded exit point before enabling its return transition; otherwise the
+      // browser starts an outward transition and shortens the reversed return.
+      memoryPanel.classList.add('is-transition-reset');
       applyExitPoint(memoryPanel, exitPoint || createExitPoint());
       memoryPanel.classList.add('memory-panel--returning');
       memoryBackdrop.classList.add('is-transitioning');
       renderMemoryCard(false);
       void memoryPanel.offsetWidth;
+      memoryPanel.classList.remove('is-transition-reset');
+      void memoryPanel.offsetWidth;
       try {
-        const returningFinished = waitForElementTransition(memoryPanel, 'transform', 680);
+        const returningFinished = waitForElementTransition(memoryPanel, 'transform', 760);
+        const yieldingFinished = waitForElementTransition(yieldingPanel, 'transform', 760);
+        const stackFinished = stackRetreat.leadingCard
+          ? waitForElementTransition(stackRetreat.leadingCard, 'transform', 760)
+          : Promise.resolve();
         await new Promise((resolve) => {
           afterTwoAnimationFrames(() => {
             memoryBackdrop.classList.add('is-undo-returning');
-            returningFinished.then(resolve);
+            startMemoryStackRetreat(stackRetreat);
+            Promise.all([returningFinished, yieldingFinished, stackFinished]).then(resolve);
           });
         });
       } finally {
         yieldingPanel.remove();
-        memoryPanel.classList.remove('memory-panel--returning');
+        finishMemoryStackRetreat(stackRetreat);
+        memoryPanel.classList.remove('memory-panel--returning', 'is-transition-reset');
         clearExitPoint(memoryPanel);
         memoryBackdrop.classList.remove('is-transitioning', 'is-undo-returning');
         if (transition.isActive()) transition.finish();
@@ -4167,7 +4225,7 @@ const output = `<!doctype html>
       memoryPanel.style.removeProperty('visibility');
       clearExitPoint(memoryPanel);
       memoryBackdrop.classList.remove('is-transitioning', 'is-card-advancing', 'is-undo-returning');
-      cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing');
+      cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing', 'is-memory-retreating');
       isTransitioning = false;
       classicDeckController.cancelMove();
       if (memoryIsOpen) renderMemoryCard(false);
@@ -4239,7 +4297,6 @@ const output = `<!doctype html>
       memoryButton.setAttribute('aria-pressed', 'false');
       memoryButton.setAttribute('aria-label', '打开今日复习');
       memoryButton.disabled = !isReady;
-      memoryCloseButton.disabled = false;
       memoryReturnButton.disabled = false;
       settingsButton.disabled = !isReady;
       cardLayer.setAttribute('aria-hidden', 'false');
@@ -4252,7 +4309,7 @@ const output = `<!doctype html>
       memoryPanel.classList.remove('memory-panel--flight', 'memory-panel--incoming', 'memory-panel--returning', 'is-flying-out', 'is-transition-reset');
       memoryPanel.style.removeProperty('visibility');
       clearExitPoint(memoryPanel);
-      cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing');
+      cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing', 'is-memory-retreating');
       if (transition?.isActive()) transition.finish();
       renderStable();
       refreshMemorySummary();
@@ -4277,7 +4334,6 @@ const output = `<!doctype html>
 
       memoryClosing = true;
       memoryButton.disabled = true;
-      memoryCloseButton.disabled = true;
       memoryReturnButton.disabled = true;
       applyExitPoint(incomingCard, exitPointFor(position));
       incomingCard.classList.add('is-incoming', 'is-returning');
@@ -5464,13 +5520,33 @@ const output = `<!doctype html>
     }
 
     function setSettingsOpen(isOpen) {
+      const wasOpen = settingsController.state.settingsOpen;
       isOpen = settingsController.setSettingsOpen(isOpen);
+      window.clearTimeout(settingsShadowFallbackTimer);
+      settingsShadowFallbackTimer = 0;
+      if (isOpen) {
+        document.body.classList.remove('settings-closing');
+      } else if (wasOpen) {
+        document.body.classList.add('settings-closing');
+        settingsShadowFallbackTimer = window.setTimeout(releaseSettingsShadow, 900);
+      }
       document.body.classList.toggle('settings-open', isOpen);
       settingsButton.setAttribute('aria-expanded', String(isOpen));
       settingsButton.setAttribute('aria-label', isOpen ? '关闭设置' : '打开设置');
       settingsButton.title = isOpen ? '关闭设置' : '打开设置';
       settingsDrawer.setAttribute('aria-hidden', String(!isOpen));
       settingsDrawer.inert = !isOpen;
+    }
+
+    function releaseSettingsShadow() {
+      window.clearTimeout(settingsShadowFallbackTimer);
+      settingsShadowFallbackTimer = 0;
+      document.body.classList.remove('settings-closing');
+    }
+
+    function handleSettingsPageTransitionEnd(event) {
+      if (event.target !== app || event.propertyName !== 'transform' || settingsController.state.settingsOpen) return;
+      releaseSettingsShadow();
     }
 
     function setWordbookPanelOpen(isOpen) {
@@ -5716,6 +5792,7 @@ const output = `<!doctype html>
         }
       },
       { target: themeButton, type: 'click', listener: () => setTheme(settingsController.toggleTheme()) },
+      { target: app, type: 'transitionend', listener: handleSettingsPageTransitionEnd },
       {
         target: settingsButton,
         type: 'click',
@@ -5748,7 +5825,6 @@ const output = `<!doctype html>
       if (memoryIsOpen) closeMemoryReview();
       else openMemoryReview();
     });
-    memoryCloseButton.addEventListener('click', closeMemoryReview);
     memoryReturnButton.addEventListener('click', closeMemoryReview);
     memoryModeButton.addEventListener('click', toggleMemoryStudyMode);
     memoryRevealButton.addEventListener('click', toggleMemoryAnswer);

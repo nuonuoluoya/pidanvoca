@@ -58,6 +58,34 @@ test("过渡结束事件是主完成信号", async () => {
   await finished;
 });
 
+test("无关属性的过渡取消不会提前结束目标动画", async () => {
+  const element = new EventTarget();
+  const clock = {
+    setTimeout: () => 17,
+    clearTimeout: () => {},
+  };
+  let resolved = false;
+  const finished = waitForElementTransition(
+    element,
+    "transform",
+    500,
+    clock,
+  ).then(() => {
+    resolved = true;
+  });
+  const unrelatedCancel = new Event("transitioncancel");
+  Object.defineProperty(unrelatedCancel, "propertyName", { value: "width" });
+  element.dispatchEvent(unrelatedCancel);
+  await Promise.resolve();
+  assert.equal(resolved, false);
+
+  const targetCancel = new Event("transitioncancel");
+  Object.defineProperty(targetCancel, "propertyName", { value: "transform" });
+  element.dispatchEvent(targetCancel);
+  await finished;
+  assert.equal(resolved, true);
+});
+
 test("双帧调度不会在第一帧提前执行", () => {
   const queued = [];
   let calls = 0;
