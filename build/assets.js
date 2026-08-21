@@ -26,6 +26,18 @@ function loadBuildAssets(projectRoot) {
     "package.json",
   );
   return {
+    importWorkerCode: `${importProcessor}\n${importWorker}\n`,
+    playfulAssets: {
+      cloudLeft: fs.readFileSync(
+        path.join(projectRoot, "assets", "playful-paper-cloud.png"),
+      ),
+      cloudRight: fs.readFileSync(
+        path.join(projectRoot, "assets", "playful-paper-cloud-right.png"),
+      ),
+      sun: fs.readFileSync(
+        path.join(projectRoot, "assets", "playful-paper-sun.svg"),
+      ),
+    },
     stylesheet: {
       PLAYFUL_CLOUD_LEFT_DATA_URI: dataUri(
         path.join(projectRoot, "assets", "playful-paper-cloud.png"),

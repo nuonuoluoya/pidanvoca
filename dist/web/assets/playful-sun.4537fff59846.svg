@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="童趣主题太阳">
+  <defs>
+    <linearGradient id="sun-gradient" x1="20" y1="14" x2="82" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f5a62a" />
+      <stop offset="0.48" stop-color="#ffc037" />
+      <stop offset="1" stop-color="#ffd83c" />
+    </linearGradient>
+  </defs>
+  <circle cx="49" cy="47" r="39" fill="url(#sun-gradient)" />
+</svg>

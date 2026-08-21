@@ -6,6 +6,8 @@
     const DEFAULT_BOOK = BUILT_IN_BOOKS.find((book) => book.id === DEFAULT_BOOK_ID) || BUILT_IN_BOOKS[0];
     const DEFAULT_WORDS = DEFAULT_BOOK.words;
     const IMPORT_WORKER_SOURCE = __BUILD_IMPORT_WORKER_SOURCE__;
+    const IMPORT_WORKER_URL = __BUILD_IMPORT_WORKER_URL__;
+    const BOOKS_MANIFEST_URL = __BUILD_BOOKS_MANIFEST_URL__;
     const vocabularyStorageKey = 'random-vocabulary:last-import:v1';
     const studySizeStorageKey = 'random-vocabulary:study-size:v1';
     const studySizePreferencesStorageKey = 'random-vocabulary:study-sizes:v2';
@@ -103,6 +105,46 @@
       return Array.isArray(book?.words) ? book.words.length : Number(book?.wordCount) || 0;
     }
 
+    async function fetchWithTimeout(url, options = {}, timeoutMilliseconds = 8000) {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), timeoutMilliseconds);
+      try {
+        return await window.fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        window.clearTimeout(timer);
+      }
+    }
+
+    async function fetchWithRetry(url, options) {
+      let lastError = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const response = await fetchWithTimeout(url, options);
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response;
+        } catch (error) {
+          lastError = error;
+          if (attempt === 0) await new Promise((resolve) => window.setTimeout(resolve, 250));
+        }
+      }
+      throw lastError || new Error('请求失败。');
+    }
+
+    async function loadBooksManifest() {
+      if (APP_BUILD_TARGET !== 'web' || !BOOKS_MANIFEST_URL) return;
+      const response = await fetchWithRetry(BOOKS_MANIFEST_URL, { cache: 'force-cache' });
+      const manifest = await response.json();
+      if (!manifest || manifest.formatVersion !== 1 || !Array.isArray(manifest.books)) throw new Error('词库清单格式不兼容。');
+      const manifestBase = new URL(BOOKS_MANIFEST_URL, window.location.href);
+      manifest.books.forEach((entry) => {
+        const book = BUILT_IN_BOOKS.find((candidate) => candidate.id === entry.id);
+        if (!book || Number(entry.wordCount) !== book.wordCount || typeof entry.url !== 'string') return;
+        book.url = new URL(entry.url, manifestBase).href;
+        book.contentHash = entry.contentHash;
+      });
+      if (BUILT_IN_BOOKS.some((book) => !book.url)) throw new Error('词库清单缺少内置词书。');
+    }
+
     async function ensureBuiltInBookWords(bookId) {
       const book = BUILT_IN_BOOKS.find((entry) => entry.id === bookId);
       if (!book) return null;
@@ -110,14 +152,13 @@
       if (!book.url || APP_BUILD_TARGET !== 'web') throw new Error('词库数据不可用，请重新构建应用。');
       let response;
       try {
-        response = await window.fetch(book.url, { cache: 'force-cache' });
+        response = await fetchWithRetry(book.url, { cache: 'force-cache' });
       } catch {
         const message = window.location.protocol === 'file:'
           ? '当前打开的是在线版，浏览器无法直接读取词库文件；请打开单文件离线版 vocabulary-flashcards.html。'
           : '词库加载失败，请检查网络连接，或确认 data/books 目录已完整部署。';
         throw new Error(message);
       }
-      if (!response.ok) throw new Error('词库加载失败（HTTP ' + response.status + '）。');
       const payload = await response.json();
       if (!payload || payload.formatVersion !== 1 || payload.id !== book.id || !Array.isArray(payload.words)) {
         throw new Error('词库数据格式不兼容。');
@@ -1605,7 +1646,7 @@
           yieldControl: yieldToMainThread
         });
       }
-      const workerUrl = URL.createObjectURL(new Blob([IMPORT_WORKER_SOURCE], { type: 'text/javascript' }));
+      const workerUrl = IMPORT_WORKER_URL || URL.createObjectURL(new Blob([IMPORT_WORKER_SOURCE], { type: 'text/javascript' }));
       const worker = new Worker(workerUrl);
       const taskId = memoryUuid();
       activeImportWorker = worker;
@@ -1613,7 +1654,7 @@
       return new Promise((resolve, reject) => {
         const cleanup = () => {
           worker.terminate();
-          URL.revokeObjectURL(workerUrl);
+          if (!IMPORT_WORKER_URL) URL.revokeObjectURL(workerUrl);
           if (activeImportWorker === worker) activeImportWorker = null;
           if (activeImportTaskId === taskId) activeImportTaskId = null;
         };
@@ -2579,6 +2620,7 @@
     syncThemeButton();
 
     async function initializeVocabulary() {
+      await loadBooksManifest();
       const rememberedVocabulary = await loadRememberedVocabulary();
       if (rememberedVocabulary) {
         WORDS = rememberedVocabulary.words;
@@ -2586,6 +2628,10 @@
         activeCustomBookId = rememberedVocabulary.customBookId;
         customBooks = rememberedVocabulary.customBooks;
         deletedProjectPersonalBookIds = rememberedVocabulary.deletedProjectPersonalBookIds;
+      } else {
+        const defaultBook = await ensureBuiltInBookWords(DEFAULT_BOOK.id);
+        if (!defaultBook) throw new Error('默认词库不存在。');
+        WORDS = defaultBook.words;
       }
       studySize = studySizePreferenceForBook(activeStudyBookKey());
       renderWordbookLists();
@@ -2595,7 +2641,11 @@
       refreshMemorySummary();
     }
 
-    initializeVocabulary().catch(() => {
+    initializeVocabulary().catch((error) => {
+      if (!Array.isArray(DEFAULT_WORDS)) {
+        showImportStatus(error instanceof Error ? error.message + ' 请检查网络后刷新重试。' : '词库加载失败，请刷新重试。', true, true);
+        return;
+      }
       WORDS = DEFAULT_WORDS;
       activeBuiltInBookId = DEFAULT_BOOK.id;
       activeCustomBookId = null;

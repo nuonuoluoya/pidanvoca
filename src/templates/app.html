@@ -16,8 +16,7 @@
       }
     } catch { /* Use the classic theme when storage is unavailable. */ }
   </script>
-  <style>
-{{APP_CSS}}  </style>
+  {{APP_STYLE}}
 </head>
 <body data-study-mode="full">
   <button class="memory-toggle" id="memoryButton" type="button" aria-label="打开今日复习" aria-pressed="false" title="今日复习" disabled>
@@ -220,6 +219,6 @@
     </section>
   </div>
 
-  <script>{{APP_BUNDLE}}</script>
+  {{APP_SCRIPT}}
 </body>
 </html>

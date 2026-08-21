@@ -1,6 +1,6 @@
-function createWebServiceWorker({ cacheVersion, defaultBookFileName }) {
+function createWebServiceWorker({ cacheVersion, coreUrls }) {
   return `const CACHE_NAME = 'pidanvoca-${cacheVersion}';
-const CORE_URLS = ['./index.html', '../../data/books.manifest.json', '../../data/books/${defaultBookFileName}'];
+const CORE_URLS = ${JSON.stringify(coreUrls)};
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_URLS)));
 });

@@ -43,8 +43,8 @@ test("兼容构建入口委托给拆分后的构建器与源码模板", () => {
   assert.doesNotMatch(implementation, /<!doctype html>/i);
   assert.doesNotMatch(implementation, /\.deck-card\s*\{/);
   assert.match(template, /^<!doctype html>/i);
-  assert.match(template, /\{\{APP_CSS\}\}/);
-  assert.match(template, /\{\{APP_BUNDLE\}\}/);
+  assert.match(template, /\{\{APP_STYLE\}\}/);
+  assert.match(template, /\{\{APP_SCRIPT\}\}/);
   assert.match(template, /id="cardLayer"/);
   assert.match(template, /id="memoryCard"/);
   assert.match(stylesheet, /\.deck-card\s*\{/);
@@ -89,7 +89,26 @@ test("双构建分别生成按需在线壳与自包含离线文件", () => {
   const webHtml = fs.readFileSync(webHtmlPath, "utf8");
   const offlineHtml = fs.readFileSync(offlineHtmlPath, "utf8");
   assert.match(webHtml, /<!-- Build target: web -->/);
-  assert.match(webHtml, /(?:"words"|words):null/);
+  assert.match(
+    webHtml,
+    /<link rel="stylesheet" href="\.\/assets\/app\.[a-f0-9]{12}\.css">/,
+  );
+  assert.match(
+    webHtml,
+    /<script src="\.\/assets\/app\.[a-f0-9]{12}\.js"><\/script>/,
+  );
+  assert.doesNotMatch(webHtml, /(?:"words"|words):\[/);
+  const appScriptName = webHtml.match(
+    /src="\.\/assets\/(app\.[a-f0-9]{12}\.js)"/,
+  )?.[1];
+  assert.ok(appScriptName);
+  assert.match(
+    fs.readFileSync(
+      path.join(projectRoot, "dist", "web", "assets", appScriptName),
+      "utf8",
+    ),
+    /words:null/,
+  );
   assert.match(webHtml, /window\.location\.protocol === 'file:'/);
   assert.match(webHtml, /\.\.\/offline\/vocabulary-flashcards\.html/);
   assert.match(offlineHtml, /<!-- Build target: offline -->/);

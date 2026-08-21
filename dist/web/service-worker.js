@@ -1,5 +1,5 @@
-const CACHE_NAME = 'pidanvoca-98c4daa830ad3f43';
-const CORE_URLS = ['./index.html', '../../data/books.manifest.json', '../../data/books/cet-4-vocabulary.json'];
+const CACHE_NAME = 'pidanvoca-aa580776edcee864';
+const CORE_URLS = ["./index.html","./assets/app.6d4a3089733c.js","./assets/app.b61f239c9925.css","./assets/import-worker.8dce9a18557a.js","./assets/playful-cloud-left.7490b74e4897.png","./assets/playful-cloud-right.a9727051d676.png","./assets/playful-sun.4537fff59846.svg","./data/books.manifest.json","./data/books/cet-4-vocabulary.json"];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_URLS)));
 });

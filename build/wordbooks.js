@@ -229,11 +229,11 @@ function buildWordbooks({
       id: book.id,
       name: book.name,
       fileName: book.fileName,
-      words: book.id === defaultBuiltInBook.id ? book.words : null,
       wordCount: book.words.length,
       contentHash: artifact.contentHash,
       schemaVersion: 1,
-      url: `../../data/books/${artifact.jsonFileName}`,
+      words: null,
+      url: `./data/books/${artifact.jsonFileName}`,
     };
   });
   return {
