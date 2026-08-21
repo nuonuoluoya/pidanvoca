@@ -1,0 +1,21 @@
+{
+  "legacyStudySize": "20",
+  "studySizes": {
+    "大学英语六级单词本.html": 25,
+    "大学英语四级单词本.html": "all",
+    "高考英语单词本.html": 30,
+    "考研英语单词本.html": 35,
+    "小学英语单词本.html": 40,
+    "雅思英语单词本.html": 45,
+    "中考英语单词本.html": 50
+  },
+  "expectedStudySizes": {
+    "cet-6-vocabulary.html": 25,
+    "cet-4-vocabulary.html": "Infinity",
+    "college-entrance-exam-vocabulary.html": 30,
+    "postgraduate-entrance-exam-vocabulary.html": 35,
+    "primary-school-vocabulary.html": 40,
+    "ielts-vocabulary.html": 45,
+    "junior-high-school-entrance-exam-vocabulary.html": 50
+  }
+}

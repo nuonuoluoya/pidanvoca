@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { indexedDB } = require("fake-indexeddb");
+const storageContract = require("./fixtures/storage-contract-v2.json");
 const {
   createDatabaseClient,
   requestResult,
@@ -22,23 +23,37 @@ function openVersionOne(name) {
   });
 }
 
+function normalizeKeyPath(keyPath) {
+  if (keyPath === null || typeof keyPath === "string") return keyPath;
+  return Array.from(keyPath);
+}
+
+function readDatabaseContract(database) {
+  const storeNames = Array.from(database.objectStoreNames);
+  const transaction = database.transaction(storeNames, "readonly");
+  const stores = Object.fromEntries(
+    storeNames.map((storeName) => {
+      const store = transaction.objectStore(storeName);
+      const indexes = Object.fromEntries(
+        Array.from(store.indexNames).map((indexName) => [
+          indexName,
+          normalizeKeyPath(store.index(indexName).keyPath),
+        ]),
+      );
+      return [storeName, { keyPath: normalizeKeyPath(store.keyPath), indexes }];
+    }),
+  );
+  return { transaction, contract: { version: database.version, stores } };
+}
+
 test("新数据库建立全部存储区和查询索引", async () => {
   const client = createDatabaseClient({
     indexedDB,
     name: databaseName("fresh"),
   });
   const database = await client.open();
-  assert.deepEqual(Array.from(database.objectStoreNames), [
-    "reviewCards",
-    "reviewLogs",
-    "reviewMeta",
-    "state",
-  ]);
-  const transaction = database.transaction("reviewCards", "readonly");
-  assert.deepEqual(
-    Array.from(transaction.objectStore("reviewCards").indexNames),
-    ["bookDue", "bookState", "updatedAt"],
-  );
+  const { transaction, contract } = readDatabaseContract(database);
+  assert.deepEqual(contract, storageContract);
   await transactionDone(transaction);
   await client.close();
 });

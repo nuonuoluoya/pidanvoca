@@ -59,6 +59,38 @@ test("双构建分别生成按需在线壳与自包含离线文件", () => {
   assert.match(webHtml, /\.\.\/offline\/vocabulary-flashcards\.html/);
   assert.match(offlineHtml, /const APP_BUILD_TARGET = 'offline'/);
   assert.doesNotMatch(offlineHtml, /"words":null/);
+  [webHtml, offlineHtml].forEach((html) => {
+    assert.match(html, /const PROJECT_PERSONAL_BOOKS = \[\];/);
+  });
+});
+
+test("默认构建不会包含本机私人词书", () => {
+  const personalDirectory = path.join(sourceWordbooksPath, "my");
+  if (!fs.existsSync(personalDirectory)) return;
+  const privateMarkers = fs
+    .readdirSync(personalDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.json$/i.test(entry.name))
+    .flatMap((entry) => {
+      const payload = JSON.parse(
+        fs.readFileSync(path.join(personalDirectory, entry.name), "utf8"),
+      );
+      return [
+        path.parse(entry.name).name,
+        payload.id,
+        payload.name,
+        payload.fileName,
+        payload.sourceFileName,
+      ].filter((value) => typeof value === "string" && value.length >= 6);
+    });
+  const outputs = [generatedHtmlPath, webHtmlPath, offlineHtmlPath].map(
+    (htmlPath) => fs.readFileSync(htmlPath, "utf8"),
+  );
+  assert.equal(
+    privateMarkers.some((marker) =>
+      outputs.some((html) => html.includes(marker)),
+    ),
+    false,
+  );
 });
 
 test("词库清单保存稳定 ID、数量、Schema 与内容哈希", () => {

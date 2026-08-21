@@ -9,6 +9,7 @@
   "scripts": {
     "build": "node build-vocabulary.js",
     "build:all": "node build-vocabulary.js",
+    "build:deterministic": "node scripts/check-deterministic-build.js",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -16,8 +17,9 @@
     "test": "node --test",
     "test:unit": "node --test",
     "test:e2e": "playwright test",
+    "metrics:refactor": "node scripts/refactoring-metrics.js",
     "perf:check": "node scripts/performance-budget.js",
-    "release:check": "npm run check && npm run perf:check && npm run test:e2e && npm run ci:generated",
+    "release:check": "npm run check && npm run build:deterministic && npm run perf:check && npm run test:e2e && npm run ci:generated",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
     "ci:generated": "npm run build && git diff --exit-code -- vocabulary-flashcards.html data dist"
   },

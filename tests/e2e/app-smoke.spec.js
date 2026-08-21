@@ -29,6 +29,20 @@ test("应用启动并渲染稳定主卡", async ({ page }) => {
   );
 });
 
+test("离线产物通过 HTTP 启动并保持自包含词库", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  await page.goto("/dist/offline/vocabulary-flashcards.html");
+  await expect(
+    page.locator('.deck-card[data-offset="0"] .card-word'),
+  ).toBeVisible();
+  await expect(page.locator("#memoryButton")).toBeEnabled();
+  await page.locator("#settingsButton").click();
+  await page.locator("#wordbookButton").click();
+  await expect(
+    page.locator("#builtInWordbookList .wordbook-option"),
+  ).toHaveCount(7);
+});
+
 test("记忆曲线每日新词快捷值为 30、50、100", async ({ page }) => {
   await page.locator("#settingsButton").click();
   await page.locator("#memorySettingsButton").click();

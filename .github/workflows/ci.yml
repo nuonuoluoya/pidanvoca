@@ -51,6 +51,9 @@ jobs:
       - name: Rebuild generated application
         run: npm run build
 
+      - name: Verify deterministic build and private wordbook exclusion
+        run: npm run build:deterministic
+
       - name: Check performance budgets
         run: npm run perf:check
 

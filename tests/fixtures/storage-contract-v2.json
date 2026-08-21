@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "stores": {
+    "reviewCards": {
+      "keyPath": "cardId",
+      "indexes": {
+        "bookDue": ["bookId", "due"],
+        "bookState": ["bookId", "state"],
+        "updatedAt": "updatedAt"
+      }
+    },
+    "reviewLogs": {
+      "keyPath": "logId",
+      "indexes": {
+        "bookReview": ["bookId", "reviewedAt"],
+        "cardReview": ["cardId", "reviewedAt"],
+        "sessionId": "sessionId"
+      }
+    },
+    "reviewMeta": {
+      "keyPath": null,
+      "indexes": {}
+    },
+    "state": {
+      "keyPath": null,
+      "indexes": {}
+    }
+  }
+}

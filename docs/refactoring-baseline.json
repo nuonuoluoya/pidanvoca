@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "capturedOn": "2026-08-21",
+  "environment": {
+    "platform": "Windows",
+    "measurementNodeMajor": 24,
+    "ciNodeMajor": 20
+  },
+  "source": {
+    "buildVocabularyBytes": 259256,
+    "buildVocabularyLines": 6314
+  },
+  "artifacts": {
+    "webHtml": {
+      "path": "dist/web/index.html",
+      "rawBytes": 1298935,
+      "gzipBytes": 474909,
+      "brotliBytes": 411443,
+      "scriptBlocks": 25,
+      "styleBlocks": 1
+    },
+    "offlineHtml": {
+      "path": "dist/offline/vocabulary-flashcards.html",
+      "rawBytes": 3813406,
+      "gzipBytes": 1280340,
+      "brotliBytes": 565906,
+      "scriptBlocks": 24,
+      "styleBlocks": 1
+    },
+    "rootOfflineHtml": {
+      "path": "vocabulary-flashcards.html",
+      "rawBytes": 3813406,
+      "gzipBytes": 1280340,
+      "brotliBytes": 565906,
+      "scriptBlocks": 24,
+      "styleBlocks": 1
+    }
+  },
+  "wordbooks": {
+    "builtInCount": 7,
+    "totalWords": 20319,
+    "stableIdSuffix": ".html",
+    "personalWordbooksInDefaultBuild": 0
+  },
+  "runtimeContracts": {
+    "visibleCardDomLimit": 7,
+    "indexedDbVersion": 2,
+    "startupModes": ["online-http", "offline-http", "offline-file"],
+    "themes": ["classic", "playful"],
+    "serviceWorkerActivation": "no-skip-waiting",
+    "contentSecurityPolicy": "sha256-inline-hashes"
+  }
+}

@@ -4,6 +4,17 @@ const {
   createSettingsRepository,
   normalizeStudySize,
 } = require("../src/services/storage/settings-repository");
+const legacySettings = require("./fixtures/legacy-settings-v1.json");
+
+const legacyBookIds = Object.freeze({
+  "大学英语六级单词本.html": "cet-6-vocabulary.html",
+  "大学英语四级单词本.html": "cet-4-vocabulary.html",
+  "高考英语单词本.html": "college-entrance-exam-vocabulary.html",
+  "考研英语单词本.html": "postgraduate-entrance-exam-vocabulary.html",
+  "小学英语单词本.html": "primary-school-vocabulary.html",
+  "雅思英语单词本.html": "ielts-vocabulary.html",
+  "中考英语单词本.html": "junior-high-school-entrance-exam-vocabulary.html",
+});
 
 function createStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -20,7 +31,7 @@ function createRepository(storage) {
     studySizeKey: "legacy-size",
     studySizesKey: "sizes-v2",
     themeKey: "theme",
-    legacyBookIds: { "旧四级词本.html": "cet-4-vocabulary.html" },
+    legacyBookIds,
     defaultStudySize: 30,
   });
 }
@@ -34,14 +45,20 @@ test("学习数量标准化支持整轮并限制 5 到 500", () => {
 
 test("读取旧设置时迁移旧词本 ID 并恢复整轮值", () => {
   const storage = createStorage({
-    "legacy-size": "20",
-    "sizes-v2": JSON.stringify({ "旧四级词本.html": "all" }),
+    "legacy-size": legacySettings.legacyStudySize,
+    "sizes-v2": JSON.stringify(legacySettings.studySizes),
   });
   const repository = createRepository(storage);
   assert.equal(repository.readLegacyStudySize(), 20);
-  assert.deepEqual(repository.readStudySizes(), {
-    "cet-4-vocabulary.html": Infinity,
-  });
+  assert.deepEqual(
+    repository.readStudySizes(),
+    Object.fromEntries(
+      Object.entries(legacySettings.expectedStudySizes).map(([key, value]) => [
+        key,
+        value === "Infinity" ? Infinity : value,
+      ]),
+    ),
+  );
 });
 
 test("写入设置可逆序列化 Infinity 并规范主题", () => {
