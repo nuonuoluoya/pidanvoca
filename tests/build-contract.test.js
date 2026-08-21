@@ -27,6 +27,8 @@ const buildImplementationPath = path.join(projectRoot, "build", "build.js");
 const appTemplatePath = path.join(projectRoot, "src", "templates", "app.html");
 const appStylesheetPath = path.join(projectRoot, "src", "styles", "app.css");
 const appRuntimePath = path.join(projectRoot, "src", "app", "bootstrap.js");
+const bundleEntryPath = path.join(projectRoot, "src", "app", "bundle-entry.js");
+const packageJson = require("../package.json");
 const performanceBudgets = require("../performance-budgets.json");
 
 test("兼容构建入口委托给拆分后的构建器与源码模板", () => {
@@ -42,7 +44,7 @@ test("兼容构建入口委托给拆分后的构建器与源码模板", () => {
   assert.doesNotMatch(implementation, /\.deck-card\s*\{/);
   assert.match(template, /^<!doctype html>/i);
   assert.match(template, /\{\{APP_CSS\}\}/);
-  assert.match(template, /\{\{APP_RUNTIME\}\}/);
+  assert.match(template, /\{\{APP_BUNDLE\}\}/);
   assert.match(template, /id="cardLayer"/);
   assert.match(template, /id="memoryCard"/);
   assert.match(stylesheet, /\.deck-card\s*\{/);
@@ -50,6 +52,11 @@ test("兼容构建入口委托给拆分后的构建器与源码模板", () => {
   assert.doesNotMatch(template, /registerOnlineServiceWorker/);
   assert.match(runtime, /const APP_BUILD_TARGET = __BUILD_APP_BUILD_TARGET__/);
   assert.match(runtime, /registerOnlineServiceWorker/);
+  assert.equal(packageJson.devDependencies.esbuild, "0.25.8");
+  assert.match(
+    fs.readFileSync(bundleEntryPath, "utf8"),
+    /require\("\.\/bootstrap"\)/,
+  );
 });
 
 test("生成页面带有禁止直接编辑的构建标记", () => {
@@ -81,14 +88,15 @@ test("入口按协议选择在线或离线版并保留查询参数与哈希", ()
 test("双构建分别生成按需在线壳与自包含离线文件", () => {
   const webHtml = fs.readFileSync(webHtmlPath, "utf8");
   const offlineHtml = fs.readFileSync(offlineHtmlPath, "utf8");
-  assert.match(webHtml, /const APP_BUILD_TARGET = 'web'/);
-  assert.match(webHtml, /"words":null/);
+  assert.match(webHtml, /<!-- Build target: web -->/);
+  assert.match(webHtml, /(?:"words"|words):null/);
   assert.match(webHtml, /window\.location\.protocol === 'file:'/);
   assert.match(webHtml, /\.\.\/offline\/vocabulary-flashcards\.html/);
-  assert.match(offlineHtml, /const APP_BUILD_TARGET = 'offline'/);
-  assert.doesNotMatch(offlineHtml, /"words":null/);
+  assert.match(offlineHtml, /<!-- Build target: offline -->/);
+  assert.doesNotMatch(offlineHtml, /(?:"words"|words):null/);
   [webHtml, offlineHtml].forEach((html) => {
-    assert.match(html, /const PROJECT_PERSONAL_BOOKS = \[\];/);
+    assert.match(html, /<!-- Personal wordbooks included: 0 -->/);
+    assert.ok((html.match(/<script(?:\s[^>]*)?>/gi) || []).length <= 3);
   });
 });
 

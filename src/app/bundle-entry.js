@@ -1,0 +1,27 @@
+window.MemoryCurveCore = require("../features/memory-review/core");
+require("../animations/animation-coordinator");
+require("../animations/geometry");
+require("../animations/card-transition");
+require("../features/wordbooks/parser");
+require("../features/wordbooks/controller");
+require("../features/classic-deck/model");
+require("../features/classic-deck/controller");
+require("../features/memory-review/review-session");
+require("../features/memory-review/controller");
+require("../features/memory-review/refresh-policy");
+require("../services/storage/availability");
+require("../services/storage/migrations/v1");
+require("../services/storage/migrations/v2");
+require("../services/storage/database");
+require("../services/storage/review-repository");
+require("../services/storage/wordbook-repository");
+require("../services/storage/settings-repository");
+require("../features/settings/controller");
+require("../views/settings-view");
+require("../views/wordbook-view");
+require("../views/completion-view");
+require("./events");
+require("../services/import/processor");
+
+window.FSRS = require("ts-fsrs");
+require("./bootstrap");

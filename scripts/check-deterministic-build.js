@@ -55,7 +55,7 @@ function assertPersonalWordbooksExcluded() {
     fs.readFileSync(path.join(projectRoot, relativePath), "utf8"),
   );
   generatedHtml.forEach((html) => {
-    if (!/const PROJECT_PERSONAL_BOOKS = \[\];/.test(html)) {
+    if (!/<!-- Personal wordbooks included: 0 -->/.test(html)) {
       throw new Error("Default build contains personal wordbook data");
     }
   });
