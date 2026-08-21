@@ -6,3 +6,5 @@ dist/**
 vocabulary-flashcards.html
 README.md
 package-lock.json
+src/templates/app.html
+src/styles/app.css
