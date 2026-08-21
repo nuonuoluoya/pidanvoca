@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pidanvoca-bf990f42bfff73fd';
+const CACHE_NAME = 'pidanvoca-98c4daa830ad3f43';
 const CORE_URLS = ['./index.html', '../../data/books.manifest.json', '../../data/books/cet-4-vocabulary.json'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_URLS)));

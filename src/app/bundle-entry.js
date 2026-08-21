@@ -2,6 +2,7 @@ window.MemoryCurveCore = require("../features/memory-review/core");
 require("../animations/animation-coordinator");
 require("../animations/geometry");
 require("../animations/card-transition");
+require("../animations/deck-transition-view");
 require("../features/wordbooks/parser");
 require("../features/wordbooks/controller");
 require("../features/classic-deck/model");
@@ -20,6 +21,8 @@ require("../features/settings/controller");
 require("../views/settings-view");
 require("../views/wordbook-view");
 require("../views/completion-view");
+require("../views/classic-deck-view");
+require("../views/memory-review-view");
 require("./events");
 require("../services/import/processor");
 

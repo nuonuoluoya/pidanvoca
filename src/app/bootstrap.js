@@ -403,6 +403,29 @@
     const memoryCompleteDetail = document.getElementById('memoryCompleteDetail');
     const memoryReturnButton = document.getElementById('memoryReturnButton');
     deckStage.append(memoryBackdrop);
+    const memoryReviewView = new window.PidanvocaViews.MemoryReviewView({
+      panel: memoryPanel,
+      elements: {
+        complete: memoryComplete,
+        completeDetail: memoryCompleteDetail,
+        card: memoryCard,
+        ratingActions: memoryRatingActions,
+        progressText: memoryProgressText,
+        progressFill: memoryProgressFill,
+        queueText: memoryQueueText,
+        word: memoryCardWord,
+        prompt: memoryCardPrompt,
+        phonetic: memoryPhonetic,
+        meaning: memoryMeaning,
+        note: memoryNote,
+        answer: memoryAnswer,
+        spelling: memorySpelling,
+        spellingInput: memorySpellingInput,
+        spellingFeedback: memorySpellingFeedback,
+        againInterval: memoryAgainInterval,
+        goodInterval: memoryGoodInterval
+      }
+    });
     const studyModes = ['full', 'word-only', 'spelling'];
     const studyModeLabels = {
       full: '完整显示',
@@ -883,17 +906,17 @@
 
     function renderMemoryCard(shouldFocus = true) {
       const item = memoryCurrentItem();
-      memoryComplete.hidden = Boolean(item);
-      memoryCard.hidden = !item;
-      memoryRatingActions.hidden = !item;
       syncMemoryUndoButton();
       if (!item) {
         cancelMemorySpellingAdvance();
         memoryModeButton.disabled = true;
-        memoryProgressText.textContent = memoryQueue.length + ' / ' + memoryQueue.length;
-        memoryProgressFill.style.width = '100%';
-        memoryQueueText.textContent = '今日完成';
-        memoryCompleteDetail.textContent = '完成 ' + memorySessionReviewed + ' 次复习，学习 ' + memorySessionNew + ' 个新词。正在计算下一次复习…';
+        memoryReviewView.render({
+          hasItem: false,
+          progressText: memoryQueue.length + ' / ' + memoryQueue.length,
+          progressPercent: 100,
+          queueText: '今日完成',
+          completeDetail: '完成 ' + memorySessionReviewed + ' 次复习，学习 ' + memorySessionNew + ' 个新词。正在计算下一次复习…'
+        });
         refreshMemoryCompletion();
         return;
       }
@@ -903,27 +926,7 @@
       cancelMemorySpellingAdvance();
       memoryPreviewTime = new Date();
       memoryPreview = memoryScheduler.repeat(memoryPreviewCard(item), memoryPreviewTime);
-      memoryAgainInterval.textContent = memoryCore.intervalLabel(memoryPreviewTime, memoryPreview[window.FSRS.Rating.Again].card.due);
-      memoryGoodInterval.textContent = memoryCore.intervalLabel(memoryPreviewTime, memoryPreview[window.FSRS.Rating.Good].card.due);
-      memoryCard.classList.remove('is-revealed');
-      memoryCard.classList.toggle('is-spelling', memoryStudyMode === 'spelling');
-      memoryProgressText.textContent = (memoryIndex + 1) + ' / ' + memoryQueue.length;
-      memoryProgressFill.style.width = Math.round(memoryIndex / Math.max(1, memoryQueue.length) * 100) + '%';
-      memoryQueueText.textContent = item.isNew ? '今日新词' : '到期复习';
-      memoryCardWord.textContent = memoryStudyMode === 'spelling' ? '' : item.word.word;
-      memoryCardPrompt.textContent = memoryStudyMode === 'spelling' ? (item.word.meaning || '根据释义拼写单词') : '回想后直接评分，或查看答案';
-      memoryPhonetic.textContent = item.word.phonetic || '';
-      memoryPhonetic.hidden = !item.word.phonetic;
-      memoryMeaning.textContent = item.word.meaning || '暂无释义';
-      memoryNote.textContent = item.word.note || '';
-      memoryNote.hidden = !item.word.note;
-      memoryAnswer.hidden = true;
-      memorySpelling.hidden = memoryStudyMode !== 'spelling';
-      memorySpellingInput.value = '';
-      memorySpellingInput.readOnly = false;
-      memorySpellingInput.classList.remove('is-correct');
-      memorySpellingFeedback.textContent = '';
-      memorySpellingFeedback.className = 'memory-spelling-feedback';
+      memoryReviewView.render(memoryPresentation(item, memoryPreviewTime, memoryPreview));
       syncMemoryRatingButtons();
       syncMemoryModeButton();
       memoryAgainButton.querySelector('strong').textContent = '忘记';
@@ -932,63 +935,43 @@
       if (shouldFocus) window.setTimeout(focusMemorySurface, 80);
     }
 
-    function cloneMemoryPanelForTransition(...classNames) {
-      const panel = memoryPanel.cloneNode(true);
-      panel.querySelectorAll('[id]').forEach((element) => {
-        element.dataset.memoryCloneId = element.id;
-        element.removeAttribute('id');
-      });
-      panel.removeAttribute('role');
-      panel.removeAttribute('aria-labelledby');
-      panel.setAttribute('aria-hidden', 'true');
-      panel.classList.add(...classNames);
-      return panel;
+    function memoryPresentation(item, previewTime = new Date(), preview = null) {
+      if (!item) {
+        return {
+          hasItem: false,
+          progressText: memoryQueue.length + ' / ' + memoryQueue.length,
+          progressPercent: 100,
+          queueText: '今日完成',
+          completeDetail: '完成 ' + memorySessionReviewed + ' 次复习，学习 ' + memorySessionNew + ' 个新词。'
+        };
+      }
+      const schedule = preview || memoryScheduler.repeat(memoryPreviewCard(item), previewTime);
+      const isSpelling = memoryStudyMode === 'spelling';
+      return {
+        hasItem: true,
+        progressText: (memoryIndex + 1) + ' / ' + memoryQueue.length,
+        progressPercent: Math.round(memoryIndex / Math.max(1, memoryQueue.length) * 100),
+        queueText: item.isNew ? '今日新词' : '到期复习',
+        isSpelling,
+        word: isSpelling ? '' : item.word.word,
+        prompt: isSpelling ? (item.word.meaning || '根据释义拼写单词') : '回想后直接评分，或查看答案',
+        phonetic: item.word.phonetic || '',
+        meaning: item.word.meaning || '暂无释义',
+        note: item.word.note || '',
+        againInterval: memoryCore.intervalLabel(previewTime, schedule[window.FSRS.Rating.Again].card.due),
+        goodInterval: memoryCore.intervalLabel(previewTime, schedule[window.FSRS.Rating.Good].card.due)
+      };
     }
 
-    function memoryClonePart(panel, id) {
-      return panel.querySelector('[data-memory-clone-id="' + id + '"]');
+    function cloneMemoryPanelForTransition(...classNames) {
+      return memoryReviewView.clonePanel(...classNames);
     }
 
     function populateMemoryTransitionPanel(panel) {
       const item = memoryCurrentItem();
-      const complete = memoryClonePart(panel, 'memoryComplete');
-      const card = memoryClonePart(panel, 'memoryCard');
-      const ratingActions = memoryClonePart(panel, 'memoryRatingActions');
-      const progressText = memoryClonePart(panel, 'memoryProgressText');
-      const progressFill = memoryClonePart(panel, 'memoryProgressFill');
-      const queueText = memoryClonePart(panel, 'memoryQueueText');
-      complete.hidden = Boolean(item);
-      card.hidden = !item;
-      ratingActions.hidden = !item;
-      if (!item) {
-        progressText.textContent = memoryQueue.length + ' / ' + memoryQueue.length;
-        progressFill.style.width = '100%';
-        queueText.textContent = '今日完成';
-        memoryClonePart(panel, 'memoryCompleteDetail').textContent = '完成 ' + memorySessionReviewed + ' 次复习，学习 ' + memorySessionNew + ' 个新词。';
-        return;
-      }
-
       const previewTime = new Date();
-      const preview = memoryScheduler.repeat(memoryPreviewCard(item), previewTime);
-      const isSpelling = memoryStudyMode === 'spelling';
-      card.classList.remove('is-revealed');
-      card.classList.toggle('is-spelling', isSpelling);
-      progressText.textContent = (memoryIndex + 1) + ' / ' + memoryQueue.length;
-      progressFill.style.width = Math.round(memoryIndex / Math.max(1, memoryQueue.length) * 100) + '%';
-      queueText.textContent = item.isNew ? '今日新词' : '到期复习';
-      memoryClonePart(panel, 'memoryCardWord').textContent = isSpelling ? '' : item.word.word;
-      memoryClonePart(panel, 'memoryCardPrompt').textContent = isSpelling ? (item.word.meaning || '根据释义拼写单词') : '回想后直接评分，或查看答案';
-      const phonetic = memoryClonePart(panel, 'memoryAnswerPhonetic');
-      phonetic.textContent = item.word.phonetic || '';
-      phonetic.hidden = !item.word.phonetic;
-      memoryClonePart(panel, 'memoryAnswerMeaning').textContent = item.word.meaning || '暂无释义';
-      const note = memoryClonePart(panel, 'memoryAnswerNote');
-      note.textContent = item.word.note || '';
-      note.hidden = !item.word.note;
-      memoryClonePart(panel, 'memoryAnswer').hidden = true;
-      memoryClonePart(panel, 'memorySpelling').hidden = !isSpelling;
-      memoryClonePart(panel, 'memoryAgainInterval').textContent = memoryCore.intervalLabel(previewTime, preview[window.FSRS.Rating.Again].card.due);
-      memoryClonePart(panel, 'memoryGoodInterval').textContent = memoryCore.intervalLabel(previewTime, preview[window.FSRS.Rating.Good].card.due);
+      const preview = item ? memoryScheduler.repeat(memoryPreviewCard(item), previewTime) : null;
+      memoryReviewView.populateClone(panel, memoryPresentation(item, previewTime, preview));
     }
 
     function waitForElementTransition(element, propertyName, fallbackMilliseconds) {
@@ -1002,60 +985,27 @@
     function prepareMemoryStackAdvance() {
       const target = position + 1;
       if (target >= deck.length) return null;
-      const cards = synchronizeCards(position, 1, new Set([position, target]));
-      cardLayer.replaceChildren(...cards);
-      bringCurrentCardForward(cards);
-      cardLayer.classList.add('is-memory-advancing');
-      void cardLayer.offsetWidth;
-      return { cards, target };
+      return deckTransitionView.prepareMemoryAdvance(position, target);
     }
 
     function startMemoryStackAdvance(advance) {
-      if (!advance) return;
-      advance.cards.forEach((card) => {
-        const deckPosition = Number(card.dataset.deckPosition);
-        if (deckPosition === position) {
-          card.classList.add('is-memory-hidden-current');
-          return;
-        }
-        if (deckPosition > position) setCardOffset(card, deckPosition - advance.target);
-      });
+      deckTransitionView.startMemoryAdvance(advance, position);
     }
 
     function finishMemoryStackAdvance(advance) {
-      if (!advance) return;
-      cardLayer.classList.remove('is-memory-advancing');
-      const cards = synchronizeCards(position);
-      cardLayer.replaceChildren(...cards);
-      bringCurrentCardForward(cards);
+      deckTransitionView.finishMemoryAdvance(advance, position);
     }
 
     function prepareMemoryStackRetreat() {
-      const cards = synchronizeCards(position);
-      cardLayer.replaceChildren(...cards);
-      bringCurrentCardForward(cards);
-      cardLayer.classList.add('is-memory-retreating');
-      void cardLayer.offsetWidth;
-      return {
-        cards,
-        leadingCard: cards.find((card) => Number(card.dataset.deckPosition) === position)
-      };
+      return deckTransitionView.prepareMemoryRetreat(position);
     }
 
     function startMemoryStackRetreat(retreat) {
-      retreat.cards.forEach((card) => {
-        const deckPosition = Number(card.dataset.deckPosition);
-        if (deckPosition === position) card.classList.add('is-memory-hidden-current');
-        setCardOffset(card, deckPosition - position + 1);
-      });
+      deckTransitionView.startMemoryRetreat(retreat, position);
     }
 
     function finishMemoryStackRetreat(retreat) {
-      if (!retreat) return;
-      cardLayer.classList.remove('is-memory-retreating');
-      const cards = synchronizeCards(position);
-      cardLayer.replaceChildren(...cards);
-      bringCurrentCardForward(cards);
+      deckTransitionView.finishMemoryRetreat(retreat, position);
     }
 
     async function transitionMemoryCardAfterRating(exitPoint, advanceFromStack, transition) {
@@ -1165,7 +1115,7 @@
       memoryPanel.style.removeProperty('visibility');
       clearExitPoint(memoryPanel);
       memoryBackdrop.classList.remove('is-transitioning', 'is-card-advancing', 'is-undo-returning');
-      cardLayer.classList.remove('is-transitioning', 'is-memory-advancing', 'is-memory-retreating');
+      deckTransitionView.resetTransitionClasses();
       isTransitioning = false;
       classicDeckController.cancelMove();
       if (memoryIsOpen) renderMemoryCard(false);
@@ -1894,21 +1844,27 @@
       }, 600);
     }
 
-    function setCardOffset(card, offset) {
-      const isCurrent = offset === 0;
-      card.dataset.offset = String(offset);
-      card.setAttribute('aria-hidden', String(!isCurrent));
-      const heading = card.querySelector('.card-word');
-      if (heading) heading.setAttribute('aria-level', isCurrent ? '1' : '2');
-      card.querySelectorAll('.sound-button, .dictionary-button, .study-mode-button, .card-spelling-input').forEach((control) => {
-        control.tabIndex = isCurrent ? 0 : -1;
-      });
-    }
+    const classicDeckView = new window.PidanvocaViews.ClassicDeckView({
+      document,
+      cardLayer,
+      getEntry: (deckPosition) => WORDS[deck[deckPosition]],
+      getProgress: (deckPosition) => studyProgressFor(deckPosition),
+      getDeckLength: () => deck.length,
+      getGroupNumber: (group) => Math.max(1, studyGroups.indexOf(group) + 1),
+      syncStudyModeButton,
+      appendMeaningText,
+      now: () => performance.now()
+    });
+    const deckTransitionView = new window.PidanvocaAnimations.DeckTransitionView({
+      cardLayer,
+      synchronizeCards: (...args) => synchronizeCards(...args),
+      setCardOffset: (card, offset) => setCardOffset(card, offset),
+      bringCurrentForward: (cards) => bringCurrentCardForward(cards),
+      applyExitPoint: (card, point) => applyExitPoint(card, point)
+    });
 
-    function progressLabelFor(progressValue) {
-      if (progressValue >= 100) return '100%';
-      if (progressValue >= 10) return Math.round(progressValue) + '%';
-      return progressValue.toFixed(1) + '%';
+    function setCardOffset(card, offset) {
+      classicDeckView.setCardOffset(card, offset);
     }
 
     function createStudyGroup(start, requestedSize = studySize) {
@@ -1974,181 +1930,24 @@
       setSettingsOpen(false);
     }
 
-    function createCardProgressCount(deckPosition) {
-      const metrics = studyProgressFor(deckPosition);
-      const progress = document.createElement('div');
-      progress.className = 'card-progress-count';
-      progress.setAttribute('aria-hidden', 'true');
-      const current = document.createElement('strong');
-      current.textContent = metrics.current;
-      const separator = document.createElement('span');
-      separator.textContent = '/';
-      const total = document.createElement('span');
-      total.textContent = metrics.total;
-      progress.append(current, separator, total);
-      return progress;
-    }
-
-    function createWaterProgress(deckPosition) {
-      const metrics = studyProgressFor(deckPosition);
-      const progressValue = metrics.progressValue;
-      const progressLabel = progressLabelFor(progressValue);
-      const water = document.createElement('div');
-      water.className = 'card-water-progress';
-      water.setAttribute('role', 'progressbar');
-      water.setAttribute('aria-label', '学习进度');
-      water.setAttribute('aria-valuemin', '0');
-      water.setAttribute('aria-valuemax', '100');
-      water.setAttribute('aria-valuenow', String(Math.round(progressValue * 10) / 10));
-      const groupNumber = Math.max(1, studyGroups.indexOf(metrics.group) + 1);
-      water.setAttribute('aria-valuetext', '第 ' + groupNumber + ' 组，第 ' + metrics.current + ' 个，共 ' + metrics.total + ' 个；整个词本 ' + deck.length + ' 个，完成 ' + progressLabel);
-      water.style.setProperty('--water-level', progressValue + '%');
-      water.style.setProperty('--wave-phase', -performance.now() + 'ms');
-      water.innerHTML = '<div class="card-water-progress__fill" aria-hidden="true">'
-        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-six" viewBox="0 0 1200 720" preserveAspectRatio="none">'
-        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
-        + '</svg>'
-        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-five" viewBox="0 0 1200 720" preserveAspectRatio="none">'
-        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
-        + '</svg>'
-        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-four" viewBox="0 0 1200 720" preserveAspectRatio="none">'
-        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
-        + '</svg>'
-        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-three" viewBox="0 0 1200 720" preserveAspectRatio="none">'
-        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
-        + '</svg>'
-        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-two" viewBox="0 0 1200 720" preserveAspectRatio="none">'
-        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
-        + '</svg>'
-        + '<svg class="card-water-progress__wave card-water-progress__wave--band card-water-progress__wave--band-one" viewBox="0 0 1200 720" preserveAspectRatio="none">'
-        + '<path d="M0 14C50 2 100 2 150 14s100 12 150 0 100-12 150 0 100 12 150 0V720H0ZM600 14c50-12 100-12 150 0s100 12 150 0 100-12 150 0 100 12 150 0V720H600Z"/>'
-        + '</svg>'
-        + '</div>';
-      return water;
-    }
-
     function mountCardContent(card, deckPosition) {
-      if (card.dataset.contentPosition === String(deckPosition) && card.querySelector('.card-scroll')) return;
-      const entry = WORDS[deck[deckPosition]];
-      card.replaceChildren();
-      card.dataset.contentPosition = String(deckPosition);
-      const content = document.createElement('div');
-      content.className = 'card-scroll';
-      content.append(createCardProgressCount(deckPosition));
-      card.append(createWaterProgress(deckPosition), content);
-
-      const wordRow = document.createElement('div');
-      wordRow.className = 'card-word-row';
-
-      const heading = document.createElement('h2');
-      heading.className = 'card-word';
-      heading.setAttribute('role', 'heading');
-      heading.textContent = entry.word;
-
-      const sound = document.createElement('button');
-      sound.className = 'sound-button';
-      sound.type = 'button';
-      sound.title = '朗读单词';
-      sound.setAttribute('aria-label', '朗读 ' + entry.word);
-      sound.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5Z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M18 6a8.5 8.5 0 0 1 0 12"></path></svg>';
-
-      const dictionary = document.createElement('a');
-      dictionary.className = 'dictionary-button';
-      dictionary.href = 'https://dictionary.cambridge.org/dictionary/english/' + encodeURIComponent(entry.word.trim().toLowerCase().replace(/\s+/g, '-'));
-      dictionary.title = '在 Cambridge Dictionary 中查询';
-      dictionary.setAttribute('aria-label', '在 Cambridge Dictionary 中查询 ' + entry.word);
-      dictionary.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a3 3 0 0 1 3 3v14a3 3 0 0 0-3-3H6.5A2.5 2.5 0 0 0 4 19.5v-14Z"></path><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H14v17a3 3 0 0 1 3-3h.5a2.5 2.5 0 0 1 2.5 2.5v-14Z"></path></svg>';
-
-      const studyModeButton = document.createElement('button');
-      studyModeButton.className = 'study-mode-button';
-      studyModeButton.type = 'button';
-      studyModeButton.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">'
-        + '<g class="study-mode-icon study-mode-icon--full"><path d="M5 6h14M5 12h14M5 18h10"></path></g>'
-        + '<g class="study-mode-icon study-mode-icon--word"><path d="m7 18 3.4-12h3.2L17 18M8.5 14h7"></path></g>'
-        + '<g class="study-mode-icon study-mode-icon--spelling"><path d="m5 16-.7 3.7L8 19l10.6-10.6-3-3L5 16Z"></path><path d="M4 21h16"></path></g>'
-        + '</svg>';
-      syncStudyModeButton(studyModeButton);
-
-      const spellingForm = document.createElement('div');
-      spellingForm.className = 'card-spelling-form';
-      const spellingInput = document.createElement('input');
-      spellingInput.className = 'card-spelling-input';
-      spellingInput.type = 'text';
-      spellingInput.autocomplete = 'off';
-      spellingInput.autocapitalize = 'none';
-      spellingInput.spellcheck = false;
-      spellingInput.setAttribute('aria-label', '输入当前单词');
-      spellingForm.append(spellingInput);
-
-      wordRow.append(heading, spellingForm, sound, dictionary, studyModeButton);
-      content.append(wordRow);
-
-      if (entry.phonetic) {
-        const phonetic = document.createElement('p');
-        phonetic.className = 'card-phonetic';
-        phonetic.textContent = entry.phonetic;
-        content.append(phonetic);
-      }
-
-      if (entry.meaning) {
-        const meaning = document.createElement('p');
-        meaning.className = 'card-meaning';
-        appendMeaningText(meaning, entry.meaning);
-        content.append(meaning);
-      }
-
-      if (entry.note) {
-        const notes = document.createElement('section');
-        notes.className = 'card-notes';
-        const notesTitle = document.createElement('h3');
-        notesTitle.textContent = '我的笔记';
-        const note = document.createElement('p');
-        note.textContent = entry.note;
-        notes.append(notesTitle, note);
-        content.append(notes);
-      }
+      classicDeckView.mountCardContent(card, deckPosition);
     }
 
     function stripCardContent(card) {
-      if (!card.childElementCount) return;
-      card.replaceChildren();
-      delete card.dataset.contentPosition;
+      classicDeckView.stripCardContent(card);
     }
 
     function resetCardFlightState(card) {
-      card.className = 'deck-card';
-      card.style.removeProperty('--fly-x');
-      card.style.removeProperty('--fly-y');
-      card.style.removeProperty('--fly-rotate');
-      delete card.dataset.flyX;
-      delete card.dataset.flyY;
-      delete card.dataset.flyRotate;
+      classicDeckView.resetCardFlightState(card);
     }
 
     function createCard(deckPosition, offset, includeContent = false) {
-      const card = document.createElement('article');
-      card.className = 'deck-card';
-      card.dataset.deckPosition = String(deckPosition);
-      if (includeContent) mountCardContent(card, deckPosition);
-      setCardOffset(card, offset);
-      return card;
+      return classicDeckView.createCard(deckPosition, offset, includeContent);
     }
 
     function synchronizeCards(center, direction = 0, contentPositions = new Set([center])) {
-      const existingCards = new Map(
-        Array.from(cardLayer.querySelectorAll('.deck-card')).map((card) => [Number(card.dataset.deckPosition), card])
-      );
-
-      return cardPositions(center, direction).map((deckPosition) => {
-        const offset = deckPosition - center;
-        const card = existingCards.get(deckPosition) || createCard(deckPosition, offset);
-        resetCardFlightState(card);
-        card.dataset.deckPosition = String(deckPosition);
-        if (contentPositions.has(deckPosition)) mountCardContent(card, deckPosition);
-        else stripCardContent(card);
-        setCardOffset(card, offset);
-        return card;
-      });
+      return classicDeckView.synchronize(center, cardPositions(center, direction), contentPositions);
     }
 
     function cardPositions(center, direction = 0) {
@@ -2255,8 +2054,7 @@
     }
 
     function bringCurrentCardForward(cards) {
-      const currentCard = cards.find((card) => card.dataset.offset === '0');
-      if (currentCard) cardLayer.append(currentCard);
+      classicDeckView.bringCurrentForward(cards);
     }
 
     function renderStable() {
@@ -2295,38 +2093,26 @@
       const cards = synchronizeCards(position, direction, new Set([position, target]));
       const currentCard = cards.find((card) => Number(card.dataset.deckPosition) === position);
       const incomingCard = cards.find((card) => Number(card.dataset.deckPosition) === target);
-      const incomingWater = incomingCard && incomingCard.querySelector('.card-water-progress');
-      const targetWaterLevel = incomingWater && incomingWater.style.getPropertyValue('--water-level');
       const currentWaterLevel = studyProgressFor(position).progressValue;
-      if (incomingWater) incomingWater.style.setProperty('--water-level', currentWaterLevel + '%');
-
-      if (direction > 0) {
-        applyExitPoint(currentCard, exitPointFor(position));
-        currentCard.classList.add('is-flying-out');
-        incomingCard.classList.add('is-incoming');
-      } else {
-        applyExitPoint(incomingCard, exitPointFor(target));
-        currentCard.classList.add('is-yielding');
-        incomingCard.classList.add('is-incoming', 'is-returning');
-      }
-
-      cardLayer.replaceChildren(...cards);
-      bringCurrentCardForward(cards);
+      const { incomingWater, targetWaterLevel } = deckTransitionView.prepareClassicMove({
+        cards,
+        currentCard,
+        incomingCard,
+        direction,
+        exitPoint: exitPointFor(direction > 0 ? position : target),
+        currentWaterLevel
+      });
       syncChrome();
       const deckTransitionFinished = waitForElementTransition(incomingCard, 'transform', 760);
       void cardLayer.offsetWidth;
 
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
-          cards.forEach((card) => setCardOffset(card, Number(card.dataset.deckPosition) - target));
+          deckTransitionView.startClassicMove(cards, target, incomingWater, targetWaterLevel);
           if (direction > 0) {
             transition.move('advancing-stack');
             transition.move('revealing-incoming');
           }
-          cardLayer.classList.add('is-transitioning');
-          window.requestAnimationFrame(() => {
-            if (incomingWater && targetWaterLevel) incomingWater.style.setProperty('--water-level', targetWaterLevel);
-          });
           syncChrome();
           deckTransitionFinished.then(() => {
             if (!transition.isActive()) return;
