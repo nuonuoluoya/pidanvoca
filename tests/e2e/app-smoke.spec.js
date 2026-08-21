@@ -29,6 +29,114 @@ test("应用启动并渲染稳定主卡", async ({ page }) => {
   );
 });
 
+test("记忆曲线每日新词快捷值为 30、50、100", async ({ page }) => {
+  await page.locator("#settingsButton").click();
+  await page.locator("#memorySettingsButton").click();
+  await expect(page.locator("#memoryDailyNewInput")).toHaveValue("20");
+  await expect(page.locator("#memoryDailyPresets button")).toHaveText([
+    "30",
+    "50",
+    "100",
+  ]);
+  await page.locator('[data-memory-daily="50"]').click();
+  await expect(page.locator("#memoryDailyNewInput")).toHaveValue("50");
+  await expect(page.locator("#importStatus")).toContainText(
+    "每日新词已设为 50 个",
+  );
+  await expect(page.locator("#memoryDailyNewInput")).toHaveAttribute(
+    "max",
+    "600",
+  );
+  await page.locator("#memoryDailyNewInput").fill("600");
+  await page.locator("#memoryDailyNewInput").press("Tab");
+  await expect(page.locator("#memoryDailyNewInput")).toHaveValue("600");
+  await expect(page.locator("#importStatus")).toContainText(
+    "每日新词已设为 600 个",
+  );
+  const dailyRowLayout = await page.evaluate(() => {
+    const label = document.querySelector(".memory-daily-label");
+    const controls = [
+      ...document.querySelectorAll("#memoryDailyPresets button"),
+      document.querySelector("#memoryDailyNewInput"),
+    ];
+    const rects = controls.map((element) => element.getBoundingClientRect());
+    const centers = rects.map((rect) => rect.top + rect.height / 2);
+    const labelRect = label.getBoundingClientRect();
+    const panel = document
+      .querySelector("#memorySettingsPanel")
+      .getBoundingClientRect();
+    return {
+      centerDelta: Math.max(...centers) - Math.min(...centers),
+      labelAboveControls:
+        labelRect.bottom < Math.min(...rects.map((rect) => rect.top)),
+      inputAfterPresets:
+        document.querySelector("#memoryDailyPresets").nextElementSibling ===
+        document.querySelector("#memoryDailyNewInput"),
+      equalPresetWidths:
+        Math.max(...rects.slice(0, 3).map((rect) => rect.width)) -
+          Math.min(...rects.slice(0, 3).map((rect) => rect.width)) <
+        1,
+      contained:
+        rects.every(
+          (rect) => rect.left >= panel.left && rect.right <= panel.right,
+        ) &&
+        labelRect.left >= panel.left &&
+        labelRect.right <= panel.right,
+    };
+  });
+  expect(dailyRowLayout.centerDelta).toBeLessThan(2);
+  expect(dailyRowLayout.labelAboveControls).toBe(true);
+  expect(dailyRowLayout.inputAfterPresets).toBe(true);
+  expect(dailyRowLayout.equalPresetWidths).toBe(true);
+  expect(dailyRowLayout.contained).toBe(true);
+});
+
+test("修改每日新词后当天名单和下次进入队列同步调整", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  await page.goto("/dist/offline/vocabulary-flashcards.html");
+  await expect(page.locator("#memoryButton")).toBeEnabled();
+
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryProgressText")).toHaveText("1 / 20");
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryBackdrop")).toBeHidden();
+
+  await page.locator("#settingsButton").click();
+  await page.locator("#memorySettingsButton").click();
+  await page.locator('[data-memory-daily="50"]').click();
+  await expect(page.locator("#memorySummary")).toContainText("今日新词 50");
+  await page.locator("#settingsButton").click();
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryProgressText")).toHaveText("1 / 50");
+  await page.locator("#memoryButton").click();
+
+  await page.locator("#settingsButton").click();
+  await expect(page.locator("#memorySettingsPanel")).toBeVisible();
+  await page.locator('[data-memory-daily="30"]').click();
+  await expect(page.locator("#memorySummary")).toContainText("今日新词 30");
+  await page.locator("#settingsButton").click();
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryProgressText")).toHaveText("1 / 30");
+});
+
+test("快速连续修改每日新词时最后一次设置生效", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-chromium");
+  await page.goto("/dist/offline/vocabulary-flashcards.html");
+  await page.locator("#settingsButton").click();
+  await page.locator("#memorySettingsButton").click();
+
+  await page.locator('[data-memory-daily="50"]').click();
+  await page.locator('[data-memory-daily="30"]').click();
+
+  await expect(page.locator("#memoryDailyNewInput")).toHaveValue("30");
+  await expect(page.locator("#importStatus")).toContainText(
+    "每日新词已设为 30 个",
+  );
+  await expect(page.locator("#memorySummary")).toContainText("今日新词 30");
+});
+
 test("在线版按需请求非默认词库并完成切换", async ({ page }) => {
   await page.goto("/dist/web/index.html");
   await expect(
@@ -179,12 +287,57 @@ test("导入词本复用共享解析规则并生成两张卡", async ({ page }) 
   await expect(page.locator("#importStatus")).toContainText(
     "已载入 1 个生词本，共 2 个词条",
   );
+  await expect(page.locator("#importStatus")).toContainText(
+    "已转换为 JSON 保存",
+  );
   await expect(
     page.locator('.deck-card[data-offset="0"] .card-word'),
   ).toHaveText(/^(lucid|resilient)$/);
   await expect(
     page.locator('.deck-card[data-offset="0"] .card-progress-count'),
   ).toContainText("/2");
+  const savedBook = await page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const openRequest = indexedDB.open("random-vocabulary", 2);
+        openRequest.onerror = () => reject(openRequest.error);
+        openRequest.onsuccess = () => {
+          const database = openRequest.result;
+          const request = database
+            .transaction("state", "readonly")
+            .objectStore("state")
+            .get("last-import");
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => {
+            const payload = request.result;
+            database.close();
+            resolve({
+              fileNames: payload.fileNames,
+              book: payload.customBooks.find(
+                (entry) => entry.name === "sample-wordbook",
+              ),
+            });
+          };
+        };
+      }),
+  );
+  expect(savedBook).toMatchObject({
+    fileNames: ["sample-wordbook.json"],
+    book: {
+      formatVersion: 1,
+      name: "sample-wordbook",
+      fileName: "sample-wordbook.json",
+      sourceFileName: "sample-wordbook.html",
+      sourceFormat: "html",
+    },
+  });
+  await page.reload();
+  await page.locator("#settingsButton").click();
+  await page.locator("#wordbookButton").click();
+  await expect(page.locator("#customWordbookSection")).toBeVisible();
+  await expect(page.locator("#customWordbookList")).toContainText(
+    "sample-wordbook",
+  );
 });
 
 test("导入在读取前拒绝非 HTML 文件", async ({ page }) => {
@@ -227,6 +380,16 @@ test("设置控制器同步主题、抽屉和内置词本切换", async ({ page 
       "#settingsDrawer .settings-actions > .settings-action:visible",
     ),
   ).toHaveText(["单词本", "记忆曲线", "主题切换", "导入生词本"]);
+  await expect(page.locator("#themeButton > span")).toBeVisible();
+  await expect(page.locator("#themeButton > span")).toHaveCSS("opacity", "1");
+  await expect(page.locator("#themeButton > span")).toHaveCSS(
+    "visibility",
+    "visible",
+  );
+  await expect(page.locator("#themeButton > span")).toHaveCSS(
+    "color",
+    "rgb(63, 82, 104)",
+  );
   await expect(page.locator("#shuffleButton")).toBeHidden();
 
   await page.locator("#themeButton").click();
@@ -245,6 +408,35 @@ test("设置控制器同步主题、抽屉和内置词本切换", async ({ page 
   await expect(selectedBook).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#importStatus")).toContainText("已切换到");
   expect(expectedBookId).toBeTruthy();
+});
+
+test("记忆模式允许打开设置并由 Escape 优先关闭抽屉", async ({ page }) => {
+  await page.locator("#memoryButton").click();
+  await expect(page.locator("body")).toHaveClass(/memory-mode/);
+  await expect(page.locator("#settingsButton")).toBeEnabled();
+  const memoryWord = await page.locator("#memoryCardWord").textContent();
+  const memoryProgress = await page
+    .locator("#memoryProgressText")
+    .textContent();
+
+  await page.locator("#settingsButton").click();
+  await expect(page.locator("body")).toHaveClass(/settings-open/);
+  await expect(page.locator("#settingsButton")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(page.locator("#settingsDrawer")).toHaveAttribute(
+    "aria-hidden",
+    "false",
+  );
+  await expect(page.locator("#memoryCardWord")).toHaveText(memoryWord);
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator("#memoryProgressText")).toHaveText(memoryProgress);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("body")).not.toHaveClass(/settings-open/);
+  await expect(page.locator("body")).toHaveClass(/memory-mode/);
+  await expect(page.locator("#memoryCardWord")).toHaveText(memoryWord);
 });
 
 test("记忆模式 Good 评分推进一次并清理动画状态", async ({ page }) => {
@@ -439,6 +631,9 @@ test("记忆模式由真实主面板飞出且后方卡片独立进入", async ({
     );
     const incomingStyle = getComputedStyle(incomingPanel);
     const outgoingStyle = getComputedStyle(outgoingPanel);
+    const incomingContentStyle = getComputedStyle(
+      incomingPanel.firstElementChild,
+    );
     const incomingRect = incomingPanel.getBoundingClientRect();
     const hiddenCurrent = document.querySelector(
       ".card-layer.is-memory-advancing .deck-card.is-memory-hidden-current",
@@ -447,6 +642,8 @@ test("记忆模式由真实主面板飞出且后方卡片独立进入", async ({
       incomingCenter: incomingRect.left + incomingRect.width / 2,
       incomingStartCenter: Number(incomingPanel.dataset.transitionStartCenter),
       incomingOpacity: Number(incomingStyle.opacity),
+      incomingTransitionProperty: incomingStyle.transitionProperty,
+      incomingContentOpacity: Number(incomingContentStyle.opacity),
       incomingTransform: incomingStyle.transform,
       outgoingOpacity: Number(outgoingStyle.opacity),
       outgoingTransform: outgoingStyle.transform,
@@ -465,7 +662,9 @@ test("记忆模式由真实主面板飞出且后方卡片独立进入", async ({
     stableBox.x + stableBox.width / 2 + 10,
   );
   expect(frame.incomingCenter).not.toBe(frame.incomingStartCenter);
-  expect(frame.incomingOpacity).toBeLessThan(1);
+  expect(frame.incomingOpacity).toBe(1);
+  expect(frame.incomingTransitionProperty.split(", ")).not.toContain("opacity");
+  expect(frame.incomingContentOpacity).toBeLessThan(1);
   expect(frame.incomingTransform).not.toBe("none");
   expect(frame.outgoingOpacity).toBeLessThan(1);
   expect(frame.outgoingTransform).not.toBe("none");
@@ -523,11 +722,11 @@ test("记忆模式撤销时返回卡遮挡当前卡并恢复上一词", async ({
     .locator(".deck-card.is-yielding")
     .evaluate((card) => {
       const style = getComputedStyle(card);
-      const properties = style.transitionProperty.split(", ");
-      const transformIndex = properties.indexOf("transform");
       return {
-        duration: style.transitionDuration.split(", ")[transformIndex],
-        easing: style.transitionTimingFunction.split(", ")[transformIndex],
+        property: style.transitionProperty,
+        duration: style.transitionDuration,
+        easing: style.transitionTimingFunction,
+        opacity: style.opacity,
       };
     });
   await expect(page.locator(".deck-stage")).toHaveAttribute(
@@ -559,57 +758,64 @@ test("记忆模式撤销时返回卡遮挡当前卡并恢复上一词", async ({
   await expect(page.locator("#memoryBackdrop")).toHaveClass(
     /is-undo-returning/,
   );
+  await expect(page.locator("#memoryBackdrop")).toHaveCSS(
+    "transform-style",
+    "preserve-3d",
+  );
   await expect(page.locator(".card-layer")).toHaveClass(/is-memory-retreating/);
   await expect
     .poll(() =>
-      page.locator(".memory-panel--yielding").evaluate((yielding) => {
-        const yieldingRect = yielding.getBoundingClientRect();
-        const backdropRect = document
-          .querySelector("#memoryBackdrop")
-          .getBoundingClientRect();
-        return (
-          yieldingRect.top +
-          yieldingRect.height / 2 -
-          (backdropRect.top + backdropRect.height / 2)
-        );
-      }),
+      page
+        .locator(".memory-panel--yielding")
+        .evaluate((panel) =>
+          Number(getComputedStyle(panel, "::before").opacity),
+        ),
     )
-    .toBeGreaterThan(2);
+    .toBeGreaterThan(0);
+  const classicYieldSurface = await page
+    .locator(".memory-panel--yielding")
+    .evaluate((panel) => {
+      const style = getComputedStyle(panel, "::before");
+      return {
+        backgroundColor: style.backgroundColor,
+        duration: style.transitionDuration,
+        easing: style.transitionTimingFunction,
+      };
+    });
+  expect(classicYieldSurface.backgroundColor).toBe("rgb(255, 255, 255)");
+  expect(classicYieldSurface.duration).toBe("0.64s");
+  expect(classicYieldSurface.easing).toBe("cubic-bezier(0.4, 0, 0.2, 1)");
+  await expect
+    .poll(() =>
+      page
+        .locator(".memory-panel--yielding")
+        .evaluate((panel) =>
+          Number(getComputedStyle(panel.firstElementChild).opacity),
+        ),
+    )
+    .toBeLessThan(1);
   const layers = await page.evaluate((deckPosition) => {
     const returning = document.querySelector(".memory-panel--returning");
     const yielding = document.querySelector(".memory-panel--yielding");
-    const yieldingStyle = getComputedStyle(yielding);
-    const yieldingProperties = yieldingStyle.transitionProperty.split(", ");
-    const yieldingTransformIndex = yieldingProperties.indexOf("transform");
-    const yieldingRect = yielding.getBoundingClientRect();
-    const backdropRect = document
-      .querySelector("#memoryBackdrop")
-      .getBoundingClientRect();
     const coveredCard = document.querySelector(
       `.deck-card[data-deck-position="${deckPosition}"]`,
     );
     return {
       returningZ: Number(getComputedStyle(returning).zIndex),
+      yieldingZ: Number(getComputedStyle(yielding).zIndex),
       returningPosition: getComputedStyle(returning).position,
-      yieldingZ: Number(yieldingStyle.zIndex),
-      yieldingTransform: yieldingStyle.transform,
-      yieldingOpacity: yieldingStyle.opacity,
-      yieldingContentOpacity: getComputedStyle(yielding.firstElementChild)
-        .opacity,
-      yieldingContentTransitionDuration: getComputedStyle(
-        yielding.firstElementChild,
-      ).transitionDuration,
-      yieldingCenterDelta: Math.abs(
-        yieldingRect.left +
-          yieldingRect.width / 2 -
-          (backdropRect.left + backdropRect.width / 2),
-      ),
-      yieldingCenterYDelta:
-        yieldingRect.top +
-        yieldingRect.height / 2 -
-        (backdropRect.top + backdropRect.height / 2),
-      yieldingWidthRatio: yieldingRect.width / backdropRect.width,
+      memoryPanelCount: document.querySelectorAll(
+        "#memoryBackdrop > .memory-panel",
+      ).length,
       returningWord: returning.querySelector("#memoryCardWord")?.textContent,
+      yieldingMotion: {
+        property: getComputedStyle(yielding).transitionProperty,
+        duration: getComputedStyle(yielding).transitionDuration,
+        easing: getComputedStyle(yielding).transitionTimingFunction,
+        opacity: getComputedStyle(yielding).opacity,
+        contentOpacity: getComputedStyle(yielding.firstElementChild).opacity,
+        transformOrigin: getComputedStyle(yielding).transformOrigin,
+      },
       returnMotion: {
         property: getComputedStyle(returning).transitionProperty,
         duration: getComputedStyle(returning).transitionDuration,
@@ -617,33 +823,46 @@ test("记忆模式撤销时返回卡遮挡当前卡并恢复上一词", async ({
         opacity: getComputedStyle(returning).opacity,
         contentOpacity: getComputedStyle(returning.firstElementChild).opacity,
       },
-      yieldMotion: {
-        duration:
-          yieldingStyle.transitionDuration.split(", ")[yieldingTransformIndex],
-        easing:
-          yieldingStyle.transitionTimingFunction.split(", ")[
-            yieldingTransformIndex
-          ],
-      },
       coveredCardOffset: coveredCard?.dataset.offset,
+      coveredCardOpacity: getComputedStyle(coveredCard).opacity,
+      coveredCardHidden: coveredCard?.classList.contains(
+        "is-memory-hidden-current",
+      ),
     };
   }, coveredDeckPosition);
+  expect(layers.returningZ).toBeGreaterThan(10);
   expect(layers.returningZ).toBeGreaterThan(layers.yieldingZ);
   expect(layers.returningPosition).toBe("absolute");
-  expect(layers.yieldingTransform).not.toBe("none");
-  expect(layers.yieldingOpacity).toBe("1");
-  expect(layers.yieldingContentOpacity).toBe("0");
-  expect(layers.yieldingContentTransitionDuration).toBe("0s");
-  expect(layers.yieldingCenterDelta).toBeLessThanOrEqual(1);
-  expect(layers.yieldingCenterYDelta).toBeGreaterThan(2);
-  expect(layers.yieldingWidthRatio).toBeLessThan(0.98);
+  expect(layers.memoryPanelCount).toBe(2);
   expect(layers.returningWord).toBe(previousWord);
   expect(layers.returnMotion).toEqual(classicReturnMotion);
   expect(layers.returnMotion.property.split(", ")).not.toContain("opacity");
   expect(layers.returnMotion.opacity).toBe("1");
   expect(layers.returnMotion.contentOpacity).toBe("1");
-  expect(layers.yieldMotion).toEqual(classicYieldMotion);
+  const classicYieldProperties = classicYieldMotion.property.split(", ");
+  const memoryYieldProperties = layers.yieldingMotion.property.split(", ");
+  const classicTransformIndex = classicYieldProperties.indexOf("transform");
+  const memoryTransformIndex = memoryYieldProperties.indexOf("transform");
+  expect(classicTransformIndex).toBeGreaterThanOrEqual(0);
+  expect(memoryTransformIndex).toBeGreaterThanOrEqual(0);
+  expect(layers.yieldingMotion.duration.split(", ")[memoryTransformIndex]).toBe(
+    classicYieldMotion.duration.split(", ")[classicTransformIndex],
+  );
+  expect(layers.yieldingMotion.easing.split(", ")[memoryTransformIndex]).toBe(
+    classicYieldMotion.easing.split(", ")[classicTransformIndex],
+  );
+  expect(layers.yieldingMotion.opacity).toBe(classicYieldMotion.opacity);
+  expect(layers.yieldingMotion.opacity).toBe("1");
+  expect(Number(layers.yieldingMotion.contentOpacity)).toBeLessThan(1);
+  await expect(page.locator(".memory-panel--yielding")).toHaveCSS(
+    "transform-origin",
+    await page
+      .locator(".deck-card.is-memory-hidden-current")
+      .evaluate((card) => getComputedStyle(card).transformOrigin),
+  );
   expect(layers.coveredCardOffset).toBe("1");
+  expect(layers.coveredCardOpacity).toBe("0");
+  expect(layers.coveredCardHidden).toBe(true);
 
   await expect(page.locator(".deck-stage")).toHaveAttribute(
     "data-animation-state",
@@ -653,9 +872,8 @@ test("记忆模式撤销时返回卡遮挡当前卡并恢复上一词", async ({
   expect(classicReturnDuration).toBeGreaterThan(580);
   expect(memoryReturnDuration).toBeGreaterThan(580);
   await expect(page.locator("#memoryCardWord")).toHaveText(previousWord);
-  await expect(
-    page.locator(".memory-panel--returning, .memory-panel--yielding"),
-  ).toHaveCount(0);
+  await expect(page.locator(".memory-panel--returning")).toHaveCount(0);
+  await expect(page.locator(".memory-panel--yielding")).toHaveCount(0);
   await expect(page.locator(".card-layer")).not.toHaveClass(
     /is-memory-retreating/,
   );
@@ -726,21 +944,79 @@ test("经典与童趣主题仅允许飞出卡片淡出", async ({ page }, testIn
   await expect(page.locator("#memoryBackdrop")).toHaveClass(
     /is-undo-returning/,
   );
+  await expect
+    .poll(() =>
+      page
+        .locator(
+          '.card-layer.is-memory-retreating .deck-card[data-offset="2"], .card-layer.is-memory-retreating .deck-card[data-offset="3"]',
+        )
+        .evaluateAll(
+          (cards) =>
+            cards.filter((card) =>
+              card
+                .getAnimations()
+                .some((animation) =>
+                  animation.effect
+                    .getKeyframes()
+                    .some((frame) => "backgroundColor" in frame),
+                ),
+            ).length,
+        ),
+    )
+    .toBe(2);
+  await expect(page.locator("#memoryBackdrop")).toHaveCSS(
+    "transform-style",
+    "preserve-3d",
+  );
+  await expect(page.locator(".memory-panel--yielding")).toHaveCount(1);
+  await expect(page.locator(".deck-card.is-memory-hidden-current")).toHaveCSS(
+    "opacity",
+    "0",
+  );
   await expect(page.locator(".memory-panel--yielding")).toHaveCSS(
     "opacity",
     "1",
   );
-  const memoryYieldContent = await page
+  await expect
+    .poll(() =>
+      page
+        .locator(".memory-panel--yielding")
+        .evaluate((panel) =>
+          Number(getComputedStyle(panel, "::before").opacity),
+        ),
+    )
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      page
+        .locator(".memory-panel--yielding")
+        .evaluate((panel) =>
+          Number(getComputedStyle(panel, "::after").opacity),
+        ),
+    )
+    .toBeGreaterThan(0);
+  const playfulYieldSurface = await page
     .locator(".memory-panel--yielding")
-    .evaluate((card) => ({
-      opacity: getComputedStyle(card.firstElementChild).opacity,
-      transitionDuration: getComputedStyle(card.firstElementChild)
-        .transitionDuration,
-    }));
-  expect(memoryYieldContent).toEqual({
-    opacity: "0",
-    transitionDuration: "0s",
-  });
+    .evaluate((panel) => {
+      const style = getComputedStyle(panel, "::before");
+      const outlineStyle = getComputedStyle(panel, "::after");
+      return {
+        backgroundColor: style.backgroundColor,
+        backgroundImage: style.backgroundImage,
+        duration: style.transitionDuration,
+        outlineBorderStyle: outlineStyle.borderStyle,
+        outlineBorderColor: outlineStyle.borderColor,
+      };
+    });
+  expect(playfulYieldSurface.backgroundColor).toBe("rgb(255, 227, 163)");
+  expect(playfulYieldSurface.backgroundImage).toContain(
+    "repeating-linear-gradient",
+  );
+  expect(playfulYieldSurface.duration).toBe("0.64s");
+  expect(playfulYieldSurface.outlineBorderStyle).toBe("dashed");
+  expect(playfulYieldSurface.outlineBorderColor).toBe(
+    "rgba(215, 112, 108, 0.5)",
+  );
   const memoryOpacity = await page
     .locator(".memory-panel--returning")
     .evaluate((card) => ({
@@ -762,6 +1038,7 @@ test("移动端记忆撤销保持返回卡覆盖和卡组同步回退", async ({
 }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile-chromium");
   await page.locator("#memoryButton").click();
+  await expect(page.locator("#memoryCardWord")).not.toHaveText("准备中…");
   const previousWord = await page.locator("#memoryCardWord").textContent();
   await page.locator("#memoryGoodButton").click();
   await expect(page.locator(".deck-stage")).toHaveAttribute(
@@ -777,59 +1054,41 @@ test("移动端记忆撤销保持返回卡覆盖和卡组同步回退", async ({
     /is-undo-returning/,
   );
   await expect(page.locator(".card-layer")).toHaveClass(/is-memory-retreating/);
-  await expect
-    .poll(() =>
-      page.locator(".memory-panel--yielding").evaluate((yielding) => {
-        const yieldingRect = yielding.getBoundingClientRect();
-        const backdropRect = document
-          .querySelector("#memoryBackdrop")
-          .getBoundingClientRect();
-        return (
-          yieldingRect.top +
-          yieldingRect.height / 2 -
-          (backdropRect.top + backdropRect.height / 2)
-        );
-      }),
-    )
-    .toBeGreaterThan(2);
+  await expect(page.locator(".memory-panel--yielding")).toHaveCount(1);
   const mobileLayers = await page.evaluate((deckPosition) => {
     const returning = document.querySelector(".memory-panel--returning");
-    const yielding = document.querySelector(".memory-panel--yielding");
-    const yieldingRect = yielding.getBoundingClientRect();
-    const backdropRect = document
-      .querySelector("#memoryBackdrop")
-      .getBoundingClientRect();
     const coveredCard = document.querySelector(
       `.deck-card[data-deck-position="${deckPosition}"]`,
     );
     return {
       returningZ: Number(getComputedStyle(returning).zIndex),
-      yieldingZ: Number(getComputedStyle(yielding).zIndex),
-      yieldingTransform: getComputedStyle(yielding).transform,
-      yieldingOpacity: getComputedStyle(yielding).opacity,
-      yieldingContentOpacity: getComputedStyle(yielding.firstElementChild)
-        .opacity,
-      yieldingCenterDelta: Math.abs(
-        yieldingRect.left +
-          yieldingRect.width / 2 -
-          (backdropRect.left + backdropRect.width / 2),
+      yieldingZ: Number(
+        getComputedStyle(document.querySelector(".memory-panel--yielding"))
+          .zIndex,
       ),
-      yieldingCenterYDelta:
-        yieldingRect.top +
-        yieldingRect.height / 2 -
-        (backdropRect.top + backdropRect.height / 2),
-      yieldingWidthRatio: yieldingRect.width / backdropRect.width,
+      memoryPanelCount: document.querySelectorAll(
+        "#memoryBackdrop > .memory-panel",
+      ).length,
+      yieldingTransformOrigin: getComputedStyle(
+        document.querySelector(".memory-panel--yielding"),
+      ).transformOrigin,
+      deckTransformOrigin: getComputedStyle(coveredCard).transformOrigin,
       coveredCardOffset: coveredCard?.dataset.offset,
+      coveredCardOpacity: getComputedStyle(coveredCard).opacity,
+      coveredCardHidden: coveredCard?.classList.contains(
+        "is-memory-hidden-current",
+      ),
     };
   }, coveredDeckPosition);
+  expect(mobileLayers.returningZ).toBeGreaterThan(10);
   expect(mobileLayers.returningZ).toBeGreaterThan(mobileLayers.yieldingZ);
-  expect(mobileLayers.yieldingTransform).not.toBe("none");
-  expect(mobileLayers.yieldingOpacity).toBe("1");
-  expect(mobileLayers.yieldingContentOpacity).toBe("0");
-  expect(mobileLayers.yieldingCenterDelta).toBeLessThanOrEqual(1);
-  expect(mobileLayers.yieldingCenterYDelta).toBeGreaterThan(2);
-  expect(mobileLayers.yieldingWidthRatio).toBeLessThan(0.98);
+  expect(mobileLayers.memoryPanelCount).toBe(2);
+  expect(mobileLayers.yieldingTransformOrigin).toBe(
+    mobileLayers.deckTransformOrigin,
+  );
   expect(mobileLayers.coveredCardOffset).toBe("1");
+  expect(mobileLayers.coveredCardOpacity).toBe("0");
+  expect(mobileLayers.coveredCardHidden).toBe(true);
 
   await expect(page.locator(".deck-stage")).toHaveAttribute(
     "data-animation-state",
@@ -841,17 +1100,10 @@ test("移动端记忆撤销保持返回卡覆盖和卡组同步回退", async ({
   );
 });
 
-test("退出记忆模式由协调器返回经典卡并统一清理", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop-chromium");
+test("退出记忆模式直接显示经典主卡并保持稳定 DOM", async ({ page }) => {
   await page.locator("#memoryButton").click();
   await expect(page.locator("#memoryBackdrop")).toHaveClass(/is-visible/);
   await page.locator("#memoryButton").click();
-  await expect(page.locator(".deck-stage")).toHaveAttribute(
-    "data-animation-state",
-    "returning-classic",
-  );
-  const returningCard = page.locator(".deck-card.is-returning");
-  await expect(returningCard).toHaveCount(1);
   await expect(page.locator(".deck-stage")).toHaveAttribute(
     "data-animation-state",
     "idle",
@@ -861,7 +1113,7 @@ test("退出记忆模式由协调器返回经典卡并统一清理", async ({ pa
   await expect(page.locator('.deck-card[data-offset="0"]')).toHaveCount(1);
   await expect(
     page.locator(
-      ".memory-panel--flight, .memory-panel--incoming, .memory-panel--yielding, .deck-card.is-returning",
+      ".memory-panel--flight, .memory-panel--incoming, .memory-panel--yielding, .deck-card.is-returning, .memory-close-stack",
     ),
   ).toHaveCount(0);
 });

@@ -66,6 +66,34 @@ test("多个导入词本合并词条并保持单本与合并身份规则", () =>
   );
   assert.equal(controller.activeBookKey(), "combined-import");
   assert.equal(controller.state.activeCustomBookId, null);
+  assert.deepEqual(
+    controller.state.customBooks.slice(-2).map((book) => ({
+      formatVersion: book.formatVersion,
+      id: book.id,
+      name: book.name,
+      fileName: book.fileName,
+      sourceFileName: book.sourceFileName,
+      sourceFormat: book.sourceFormat,
+    })),
+    [
+      {
+        formatVersion: 1,
+        id: "custom:a.html",
+        name: "a",
+        fileName: "a.json",
+        sourceFileName: "a.html",
+        sourceFormat: "html",
+      },
+      {
+        formatVersion: 1,
+        id: "custom:b.html",
+        name: "b",
+        fileName: "b.json",
+        sourceFileName: "b.html",
+        sourceFormat: "html",
+      },
+    ],
+  );
 });
 
 test("删除活动项目词本时记录隐藏并回退默认词本", () => {

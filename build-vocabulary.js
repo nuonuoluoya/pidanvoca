@@ -5,7 +5,7 @@ const { parseWordbook } = require("./src/features/wordbooks/parser");
 
 const wordbooksPath = path.join(__dirname, "wordbooks");
 const personalWordbooksPath = path.join(wordbooksPath, "my");
-const defaultBookFileName = "cet-4-vocabulary.html";
+const defaultBookId = "cet-4-vocabulary.html";
 const outputPath = path.join(__dirname, "vocabulary-flashcards.html");
 const dataPath = path.join(__dirname, "data");
 const dataBooksPath = path.join(dataPath, "books");
@@ -22,7 +22,7 @@ const playfulCloudRightPath = path.join(
 const playfulSunPath = path.join(
   __dirname,
   "assets",
-  "playful-paper-sun.png",
+  "playful-paper-sun.svg",
 );
 const playfulCloudLeftDataUri = `data:image/png;base64,${fs
   .readFileSync(playfulCloudLeftPath)
@@ -30,7 +30,7 @@ const playfulCloudLeftDataUri = `data:image/png;base64,${fs
 const playfulCloudRightDataUri = `data:image/png;base64,${fs
   .readFileSync(playfulCloudRightPath)
   .toString("base64")}`;
-const playfulSunDataUri = `data:image/png;base64,${fs
+const playfulSunDataUri = `data:image/svg+xml;base64,${fs
   .readFileSync(playfulSunPath)
   .toString("base64")}`;
 const webOutputPath = path.join(__dirname, "dist", "web", "index.html");
@@ -204,17 +204,39 @@ const fsrsPackagePath = path.join(
   "package.json",
 );
 const builtInBookDefinitions = [
-  { fileName: "cet-6-vocabulary.html", name: "大学英语六级单词本" },
-  { fileName: "cet-4-vocabulary.html", name: "大学英语四级单词本" },
-  { fileName: "college-entrance-exam-vocabulary.html", name: "高考英语单词本" },
   {
-    fileName: "postgraduate-entrance-exam-vocabulary.html",
+    sourceFileName: "cet-6-vocabulary.json",
+    id: "cet-6-vocabulary.html",
+    name: "大学英语六级单词本",
+  },
+  {
+    sourceFileName: "cet-4-vocabulary.json",
+    id: "cet-4-vocabulary.html",
+    name: "大学英语四级单词本",
+  },
+  {
+    sourceFileName: "college-entrance-exam-vocabulary.json",
+    id: "college-entrance-exam-vocabulary.html",
+    name: "高考英语单词本",
+  },
+  {
+    sourceFileName: "postgraduate-entrance-exam-vocabulary.json",
+    id: "postgraduate-entrance-exam-vocabulary.html",
     name: "考研英语单词本",
   },
-  { fileName: "primary-school-vocabulary.html", name: "小学英语单词本" },
-  { fileName: "ielts-vocabulary.html", name: "雅思英语单词本" },
   {
-    fileName: "junior-high-school-entrance-exam-vocabulary.html",
+    sourceFileName: "primary-school-vocabulary.json",
+    id: "primary-school-vocabulary.html",
+    name: "小学英语单词本",
+  },
+  {
+    sourceFileName: "ielts-vocabulary.json",
+    id: "ielts-vocabulary.html",
+    name: "雅思英语单词本",
+  },
+  {
+    sourceFileName: "junior-high-school-entrance-exam-vocabulary.json",
+    id: "junior-high-school-entrance-exam-vocabulary.html",
     name: "中考英语单词本",
   },
 ];
@@ -240,6 +262,75 @@ function listHtmlFiles(directoryPath) {
     .sort((left, right) => left.localeCompare(right, "zh-CN"));
 }
 
+function listJsonFiles(directoryPath) {
+  if (!fs.existsSync(directoryPath)) return [];
+  return fs
+    .readdirSync(directoryPath)
+    .filter((fileName) => /\.json$/i.test(fileName))
+    .sort((left, right) => left.localeCompare(right, "zh-CN"));
+}
+
+function normalizeJsonWord(word, sourceFileName, index) {
+  if (!word || typeof word !== "object" || Array.isArray(word)) {
+    throw new Error(`${sourceFileName} 的第 ${index + 1} 个词条不是对象。`);
+  }
+  const value = typeof word.word === "string" ? word.word.trim() : "";
+  if (!value) {
+    throw new Error(`${sourceFileName} 的第 ${index + 1} 个词条缺少 word。`);
+  }
+  return {
+    word: value,
+    phonetic: typeof word.phonetic === "string" ? word.phonetic.trim() : "",
+    meaning: typeof word.meaning === "string" ? word.meaning.trim() : "",
+    note: typeof word.note === "string" ? word.note.trim() : "",
+  };
+}
+
+function readJsonWordbook(directoryPath, sourceFileName, expected = {}) {
+  let payload;
+  try {
+    payload = JSON.parse(
+      fs.readFileSync(path.join(directoryPath, sourceFileName), "utf8"),
+    );
+  } catch (error) {
+    throw new Error(
+      `无法读取 JSON 生词本 ${sourceFileName}：${error instanceof Error ? error.message : error}`,
+      { cause: error },
+    );
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`${sourceFileName} 的根节点必须是对象。`);
+  }
+  if (payload.formatVersion !== 1) {
+    throw new Error(`${sourceFileName} 的 formatVersion 必须为 1。`);
+  }
+  if (typeof payload.id !== "string" || !payload.id.trim()) {
+    throw new Error(`${sourceFileName} 缺少有效的 id。`);
+  }
+  if (typeof payload.name !== "string" || !payload.name.trim()) {
+    throw new Error(`${sourceFileName} 缺少有效的 name。`);
+  }
+  if (!Array.isArray(payload.words) || !payload.words.length) {
+    throw new Error(`${sourceFileName} 的 words 必须是非空数组。`);
+  }
+  if (expected.id && payload.id !== expected.id) {
+    throw new Error(`${sourceFileName} 的 id 与内置词书配置不一致。`);
+  }
+  if (expected.name && payload.name !== expected.name) {
+    throw new Error(`${sourceFileName} 的 name 与内置词书配置不一致。`);
+  }
+  return {
+    formatVersion: 1,
+    id: payload.id,
+    name: payload.name.trim(),
+    fileName: payload.id,
+    sourceFileName,
+    words: payload.words.map((word, index) =>
+      normalizeJsonWord(word, sourceFileName, index),
+    ),
+  };
+}
+
 function createCustomBookId(fileName) {
   return (
     "custom:" +
@@ -251,14 +342,14 @@ function createCustomBookId(fileName) {
   );
 }
 
-const wordbookFileNames = listHtmlFiles(wordbooksPath);
+const wordbookFileNames = listJsonFiles(wordbooksPath);
 
 if (!wordbookFileNames.length) {
-  throw new Error("wordbooks 文件夹中没有 HTML 生词本。");
+  throw new Error("wordbooks 文件夹中没有 JSON 生词本。");
 }
 
 const missingBuiltInBooks = builtInBookDefinitions
-  .map((book) => book.fileName)
+  .map((book) => book.sourceFileName)
   .filter((fileName) => !wordbookFileNames.includes(fileName));
 
 if (missingBuiltInBooks.length) {
@@ -266,28 +357,18 @@ if (missingBuiltInBooks.length) {
 }
 
 const definedBookFileNames = new Set(
-  builtInBookDefinitions.map((book) => book.fileName),
+  builtInBookDefinitions.map((book) => book.sourceFileName),
 );
 const additionalBookDefinitions = wordbookFileNames
   .filter((fileName) => !definedBookFileNames.has(fileName))
-  .map((fileName) => ({
-    fileName,
-    name: path.basename(fileName, path.extname(fileName)),
-  }));
+  .map((sourceFileName) => ({ sourceFileName }));
 const builtInBooks = builtInBookDefinitions
   .concat(additionalBookDefinitions)
-  .map(({ fileName, name }) => ({
-    id: fileName,
-    name,
-    fileName,
-    words: parseWordbook(
-      fs.readFileSync(path.join(wordbooksPath, fileName), "utf8"),
-      fileName,
-    ),
-  }));
+  .map((definition) =>
+    readJsonWordbook(wordbooksPath, definition.sourceFileName, definition),
+  );
 const bookArtifacts = builtInBooks.map((book) => {
-  const jsonFileName =
-    path.basename(book.fileName, path.extname(book.fileName)) + ".json";
+  const jsonFileName = book.sourceFileName;
   const payload = {
     formatVersion: 1,
     id: book.id,
@@ -325,19 +406,35 @@ const webCacheVersion = crypto
   .digest("hex")
   .slice(0, 16);
 const includePersonalWordbooks = process.env.INCLUDE_PERSONAL_WORDBOOKS === "1";
-const personalBooks = (
-  includePersonalWordbooks ? listHtmlFiles(personalWordbooksPath) : []
-).map((fileName) => ({
-  id: createCustomBookId(fileName),
-  name: path.basename(fileName, path.extname(fileName)),
-  fileName,
-  words: parseWordbook(
-    fs.readFileSync(path.join(personalWordbooksPath, fileName), "utf8"),
-    fileName,
-  ),
-}));
+const personalSourceFileNames = includePersonalWordbooks
+  ? listJsonFiles(personalWordbooksPath).concat(
+      listHtmlFiles(personalWordbooksPath),
+    )
+  : [];
+const personalBooks = personalSourceFileNames.map((sourceFileName) => {
+  if (/\.json$/i.test(sourceFileName)) {
+    const book = readJsonWordbook(personalWordbooksPath, sourceFileName);
+    return {
+      ...book,
+      fileName: sourceFileName,
+      sourceFormat: "json",
+    };
+  }
+  return {
+    formatVersion: 1,
+    id: createCustomBookId(sourceFileName),
+    name: path.basename(sourceFileName, path.extname(sourceFileName)),
+    fileName: sourceFileName.replace(/\.html?$/i, ".json"),
+    sourceFileName,
+    sourceFormat: "html",
+    words: parseWordbook(
+      fs.readFileSync(path.join(personalWordbooksPath, sourceFileName), "utf8"),
+      sourceFileName,
+    ),
+  };
+});
 const defaultBuiltInBook =
-  builtInBooks.find((book) => book.fileName === defaultBookFileName) ||
+  builtInBooks.find((book) => book.id === defaultBookId) ||
   builtInBooks[0];
 const embeddedBuiltInBooks = JSON.stringify(builtInBooks).replace(
   /</g,
@@ -503,6 +600,8 @@ const output = `<!doctype html>
       --card-stack-duration: 640ms;
       --card-stack-easing: cubic-bezier(0.4, 0, 0.2, 1);
       --card-stack-fade-duration: 500ms;
+      --card-transform-origin-depth: -1120px;
+      --memory-stack-one-surface: #ffffff;
     }
 
     * { box-sizing: border-box; }
@@ -1145,82 +1244,38 @@ const output = `<!doctype html>
     body.settings-open .app::after,
     body.settings-closing .app::after { opacity: 1; }
 
-    .settings-toggle {
-      position: fixed;
-      top: 24px;
-      right: 32px;
-      z-index: 70;
-      width: 44px;
-      height: 44px;
-      display: grid;
-      place-items: center;
-      padding: 0;
-      border: 1px solid rgba(102, 161, 202, 0.22);
-      border-radius: 50%;
-      color: #3f8fc5;
-      background: linear-gradient(145deg, rgba(238,248,255,0.98), rgba(201,229,247,0.94));
-      box-shadow: 0 8px 24px rgba(67,125,166,0.12), inset 0 1px 0 rgba(255,255,255,0.86);
-      cursor: pointer;
-      isolation: isolate;
-      overflow: hidden;
-      transition: transform 220ms ease, color 320ms ease, border-color 440ms ease, box-shadow 440ms ease;
-      backdrop-filter: blur(14px);
-    }
-
-    .settings-toggle::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      z-index: -1;
-      border-radius: inherit;
-      background: linear-gradient(145deg, #ffffff 0%, #fdfefe 48%, #f2f6fa 100%);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 440ms cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .settings-toggle:hover {
-      color: var(--accent);
-      background: linear-gradient(145deg, #f5fbff, #bfdef3);
-      box-shadow: 0 10px 28px rgba(67,125,166,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
-    }
-
-    .settings-toggle:active { transform: scale(0.94); }
-    .settings-toggle .icon {
-      position: relative;
-      z-index: 1;
-      transition: transform 640ms cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    body.settings-open .settings-toggle {
-      border-color: rgba(150, 168, 185, 0.2);
-      box-shadow: 0 8px 24px rgba(73,96,120,0.1), inset 0 1px 0 rgba(255,255,255,0.96);
-    }
-
-    body.settings-open .settings-toggle::before { opacity: 1; }
-    body.settings-open .settings-toggle .icon { transform: rotate(52deg); }
-
+    .settings-toggle,
     .memory-toggle {
       position: fixed;
       top: 24px;
-      right: 88px;
       z-index: 70;
-      width: 44px;
-      height: 44px;
-      display: grid;
-      place-items: center;
-      padding: 0;
+      min-width: 76px;
+      height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 17px;
       border: 1px solid rgba(102, 161, 202, 0.22);
-      border-radius: 50%;
+      border-radius: 14px;
       color: #3f8fc5;
       background: linear-gradient(145deg, rgba(238,248,255,0.98), rgba(201,229,247,0.94));
       box-shadow: 0 8px 24px rgba(67,125,166,0.12), inset 0 1px 0 rgba(255,255,255,0.86);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 750;
+      letter-spacing: 0.09em;
+      line-height: 1;
+      white-space: nowrap;
       cursor: pointer;
       isolation: isolate;
-      transition: transform 180ms ease, color 320ms ease, border-color 440ms ease, box-shadow 440ms ease;
+      transition: transform 180ms ease, color 320ms ease, border-color 320ms ease, background 320ms ease, box-shadow 320ms ease;
       backdrop-filter: blur(14px);
     }
 
+    .settings-toggle { right: 28px; color: #607f99; }
+    .memory-toggle { right: 114px; }
+
+    .settings-toggle::before,
     .memory-toggle::before {
       content: '';
       position: absolute;
@@ -1233,16 +1288,29 @@ const output = `<!doctype html>
       transition: opacity 440ms cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    .memory-toggle:hover { color: var(--accent); box-shadow: 0 10px 28px rgba(67,125,166,0.18), inset 0 1px 0 rgba(255,255,255,0.92); }
-    .memory-toggle:active { transform: scale(0.94); }
-    .memory-toggle:disabled { opacity: 0.48; cursor: wait; }
-    .memory-toggle .icon {
+    .settings-toggle:hover,
+    .memory-toggle:hover {
+      color: var(--accent);
+      background: linear-gradient(145deg, #f5fbff, #bfdef3);
+      box-shadow: 0 10px 28px rgba(67,125,166,0.16), inset 0 1px 0 rgba(255,255,255,0.9);
+      transform: translateY(-1px);
+    }
+
+    .settings-toggle:active,
+    .memory-toggle:active { transform: translateY(1px) scale(0.97); }
+    .chrome-button__label {
       position: relative;
       z-index: 1;
-      width: 23px;
-      height: 23px;
-      transition: transform 640ms cubic-bezier(0.4, 0, 0.2, 1);
+      transform: translateX(0.045em);
     }
+
+    body.settings-open .settings-toggle {
+      border-color: rgba(150, 168, 185, 0.2);
+      box-shadow: 0 8px 24px rgba(73,96,120,0.1), inset 0 1px 0 rgba(255,255,255,0.96);
+    }
+
+    body.settings-open .settings-toggle::before { opacity: 1; }
+    .memory-toggle:disabled { opacity: 0.48; cursor: wait; }
 
     body.settings-open .memory-toggle {
       border-color: rgba(150, 168, 185, 0.2);
@@ -1250,7 +1318,6 @@ const output = `<!doctype html>
     }
 
     body.settings-open .memory-toggle::before { opacity: 1; }
-    body.settings-open .memory-toggle .icon { transform: rotate(-12deg) scale(1.04); }
 
     .memory-badge {
       position: absolute;
@@ -1280,7 +1347,6 @@ const output = `<!doctype html>
       background: linear-gradient(145deg,#65b5ea,#378ecf);
       box-shadow: 0 11px 30px rgba(45,126,184,0.26), inset 0 1px 0 rgba(255,255,255,0.38);
     }
-    body.memory-mode .memory-toggle .icon { transform: scale(1.04); }
     body.memory-mode .card-layer { pointer-events: none; }
     body.memory-mode .controls { opacity: 0; visibility: hidden; pointer-events: none; }
     body.memory-mode .orbit { opacity: 0.72; }
@@ -1293,6 +1359,7 @@ const output = `<!doctype html>
       padding: 0;
       background: transparent;
       opacity: 1;
+      transform-style: preserve-3d;
       transition: transform 300ms cubic-bezier(0.2,0.8,0.2,1);
     }
 
@@ -1312,7 +1379,7 @@ const output = `<!doctype html>
       color: var(--text);
       background: linear-gradient(150deg,#fff 0%,#fbfdff 62%,#eef7ff 100%);
       box-shadow: 0 22px 56px rgba(69,96,130,0.13), 0 4px 14px rgba(69,96,130,0.06), inset 0 1px 0 #fff;
-      transform-origin: 50% 50% -1120px;
+      transform-origin: 50% 50% var(--card-transform-origin-depth);
       transform-style: preserve-3d;
       transform: translateY(8px) scale(0.988);
       transition: transform 280ms cubic-bezier(0.2,0.8,0.2,1);
@@ -1338,21 +1405,6 @@ const output = `<!doctype html>
       88% { translate: 2px 0; }
     }
 
-    .memory-backdrop.is-returning-to-classic {
-      opacity: 1;
-      pointer-events: none;
-    }
-
-    .memory-backdrop.is-returning-to-classic > .memory-panel:not(.memory-panel--flight) {
-      opacity: 1;
-      filter: saturate(0.82) brightness(0.99);
-      transform: translateZ(-150px) rotateY(14deg) scale(0.94);
-      transition:
-        transform 620ms cubic-bezier(0.16, 1, 0.3, 1),
-        filter 360ms ease-in,
-        box-shadow 360ms ease;
-    }
-
     .memory-panel--flight {
       position: absolute;
       inset: 0;
@@ -1372,20 +1424,20 @@ const output = `<!doctype html>
       inset: 0;
       z-index: 12;
       pointer-events: none;
-      opacity: 0;
+      opacity: 1;
       filter: saturate(0.82) brightness(0.99);
       transform: translateZ(-150px) rotateY(14deg) scale(0.94);
       will-change: transform, opacity, filter, box-shadow;
       transition:
-        transform 640ms cubic-bezier(0.4, 0, 0.2, 1),
-        opacity 340ms ease 220ms,
-        filter 420ms ease 180ms,
-        box-shadow 420ms ease 180ms;
+        transform var(--card-stack-duration) var(--card-stack-easing),
+        translate 180ms ease,
+        filter var(--card-stack-fade-duration) ease,
+        box-shadow var(--card-stack-fade-duration) ease;
     }
 
     .memory-panel.memory-panel--incoming > * {
       opacity: 0;
-      transition: opacity 420ms linear;
+      transition: opacity 520ms linear;
     }
 
     .memory-backdrop.is-card-advancing > .memory-panel.memory-panel--incoming {
@@ -1397,7 +1449,7 @@ const output = `<!doctype html>
 
     .memory-backdrop.is-card-advancing > .memory-panel.memory-panel--incoming > * {
       opacity: 1;
-      transition-delay: 280ms;
+      transition-delay: 60ms;
     }
 
     .memory-backdrop.is-transitioning .memory-panel--flight.is-flying-out {
@@ -1411,15 +1463,37 @@ const output = `<!doctype html>
       inset: 0;
       z-index: 10;
       pointer-events: none;
+      overflow: hidden;
+      opacity: 1;
+      filter: none;
+      transform: translateZ(0) rotateY(0deg) scale(1);
       will-change: transform, filter, box-shadow;
       transition:
         transform var(--card-stack-duration) var(--card-stack-easing),
+        translate 180ms ease,
         filter var(--card-stack-fade-duration) ease,
         box-shadow var(--card-stack-fade-duration) ease;
     }
 
+    .memory-panel--yielding::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      border-radius: inherit;
+      background: var(--memory-stack-one-surface);
+      opacity: 0;
+      pointer-events: none;
+      will-change: opacity;
+      transition: opacity var(--card-stack-duration) var(--card-stack-easing);
+    }
+
     .memory-panel--yielding > * {
-      transition: none;
+      position: relative;
+      z-index: 1;
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 360ms linear;
     }
 
     .memory-backdrop.is-visible > .memory-panel.memory-panel--returning {
@@ -1446,8 +1520,12 @@ const output = `<!doctype html>
       z-index: 10;
       opacity: 1;
       filter: saturate(0.82) brightness(0.99);
-      transform: translate3d(0, 20px, -260px) scale(0.86);
+      transform: translateZ(-150px) rotateY(14deg) scale(0.94);
       box-shadow: 0 14px 36px rgba(69,96,130,0.09);
+    }
+
+    .memory-backdrop.is-undo-returning > .memory-panel--yielding::before {
+      opacity: 1;
     }
 
     .memory-backdrop.is-undo-returning > .memory-panel--yielding > * {
@@ -1579,9 +1657,12 @@ const output = `<!doctype html>
     .memory-settings-panel[hidden] { display: none; }
     .memory-summary { margin: 0 0 12px; color: #6d8295; font-size: 11px; line-height: 1.6; }
     .memory-setting-row { justify-content: space-between; gap: 12px; margin-bottom: 10px; color: #49647c; font-size: 12px; font-weight: 700; }
-    .memory-daily-input { width: 76px; padding: 8px 9px; border: 1px solid rgba(105,142,174,0.18); border-radius: 10px; color: #33526c; background: #fff; font: inherit; text-align: center; }
-    .memory-daily-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: -2px 0 11px; }
-    .memory-daily-presets button { min-height: 32px; border: 1px solid rgba(105,142,174,0.14); border-radius: 9px; color: #5f7f98; background: rgba(255,255,255,0.82); font: inherit; font-size: 11px; font-weight: 750; cursor: pointer; }
+    .memory-daily-row { display: grid; justify-content: stretch; gap: 7px; margin-bottom: 11px; }
+    .memory-daily-label { justify-self: start; white-space: nowrap; }
+    .memory-daily-controls { min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 5px; }
+    .memory-daily-input { width: 58px; min-height: 32px; padding: 6px 4px; border: 1px solid rgba(105,142,174,0.18); border-radius: 9px; color: #33526c; background: #fff; font: inherit; text-align: center; }
+    .memory-daily-presets { min-width: 0; flex: 1 1 auto; display: flex; align-items: center; gap: 5px; margin: 0; }
+    .memory-daily-presets button { min-width: 42px; min-height: 32px; flex: 1 1 42px; padding: 0 7px; border: 1px solid rgba(105,142,174,0.14); border-radius: 9px; color: #5f7f98; background: rgba(255,255,255,0.82); font: inherit; font-size: 11px; font-weight: 750; cursor: pointer; }
     .memory-daily-presets button:hover { color: #286d9f; border-color: rgba(66,143,198,0.3); background: #fff; }
     .memory-setting-actions { flex-wrap: wrap; gap: 7px; }
     .memory-setting-button { flex: 1 1 46%; min-height: 38px; padding: 0 9px; border: 1px solid rgba(105,142,174,0.14); border-radius: 10px; color: #527087; background: #fff; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
@@ -1659,6 +1740,13 @@ const output = `<!doctype html>
     .settings-action:disabled { opacity: 0.46; cursor: wait; }
     .settings-action[hidden] { display: none; }
     .settings-action .icon { width: 21px; height: 21px; }
+    .settings-action > span {
+      position: relative;
+      z-index: 1;
+      color: inherit;
+      opacity: 1;
+      visibility: visible;
+    }
 
     .settings-action__chevron {
       width: 18px !important;
@@ -2033,17 +2121,24 @@ const output = `<!doctype html>
       :root {
         --settings-panel-width: min(78vw, 300px);
         --settings-page-offset: -1px;
+        --card-transform-origin-depth: -520px;
       }
 
-      .settings-toggle { top: 10px; right: 14px; width: 42px; height: 42px; }
-      .memory-toggle { top: 10px; right: 66px; width: 42px; height: 42px; }
+      .settings-toggle,
+      .memory-toggle {
+        top: 10px;
+        min-width: 66px;
+        height: 38px;
+        padding: 0 13px;
+        border-radius: 12px;
+        font-size: 13px;
+      }
+      .settings-toggle { right: 12px; }
+      .memory-toggle { right: 88px; }
       .settings-drawer { padding: 78px 18px 22px; }
       .settings-action { min-height: 52px; padding: 0 14px; }
       .memory-backdrop { padding: 0; }
       .memory-panel { max-height: none; gap: 10px; padding: 15px; border-radius: 18px; }
-      .memory-backdrop.is-returning-to-classic > .memory-panel:not(.memory-panel--flight) {
-        transform: translateZ(-80px) rotateY(12deg) scale(0.95);
-      }
       .memory-backdrop.is-visible > .memory-panel.memory-panel--incoming {
         transform: translateZ(-80px) rotateY(12deg) scale(0.95);
       }
@@ -2054,7 +2149,7 @@ const output = `<!doctype html>
         transform: translate3d(0, 0, 0) scale(1);
       }
       .memory-backdrop.is-undo-returning > .memory-panel--yielding {
-        transform: translate3d(0, 14px, -150px) scale(0.88);
+        transform: translateZ(-80px) rotateY(12deg) scale(0.95);
       }
       .memory-card { min-height: 0; padding: 20px 18px; }
       .memory-actions { gap: 6px; }
@@ -2197,12 +2292,13 @@ const output = `<!doctype html>
       box-shadow: 0 22px 56px rgba(69,96,130,0.13), 0 4px 14px rgba(69,96,130,0.06);
       overflow: hidden;
       backface-visibility: hidden;
-      transform-origin: 50% 50% -1120px;
+      transform-origin: 50% 50% var(--card-transform-origin-depth);
       transform-style: preserve-3d;
       will-change: transform, opacity, filter;
       transition:
         transform var(--card-stack-duration) var(--card-stack-easing),
         translate 180ms ease,
+        background-color var(--card-stack-duration) var(--card-stack-easing),
         filter var(--card-stack-fade-duration) ease,
         box-shadow var(--card-stack-fade-duration) ease;
     }
@@ -2296,7 +2392,7 @@ const output = `<!doctype html>
       }
 
       body.memory-mode .memory-backdrop { pointer-events: none; }
-      body.memory-mode .memory-backdrop > .memory-panel:not(.memory-panel--flight):not(.memory-panel--yielding) { pointer-events: auto; }
+      body.memory-mode .memory-backdrop > .memory-panel:not(.memory-panel--flight):not(.memory-panel--incoming):not(.memory-panel--yielding) { pointer-events: auto; }
       body.memory-mode .deck-card[data-offset="1"] { pointer-events: auto; }
       body.memory-mode.memory-good-enabled .deck-card[data-offset="1"]:hover {
         box-shadow: 0 20px 48px rgba(61,151,211,0.22);
@@ -2340,7 +2436,8 @@ const output = `<!doctype html>
       visibility: hidden !important;
     }
 
-    .card-layer.is-memory-advancing .deck-card.is-memory-hidden-current {
+    .card-layer.is-memory-advancing .deck-card.is-memory-hidden-current,
+    .card-layer.is-memory-retreating .deck-card.is-memory-hidden-current {
       opacity: 0 !important;
       pointer-events: none !important;
     }
@@ -2352,15 +2449,6 @@ const output = `<!doctype html>
     .card-layer.is-memory-retreating .deck-card > * {
       opacity: 0 !important;
       visibility: hidden !important;
-    }
-
-    .card-layer.is-memory-returning {
-      z-index: 70;
-      pointer-events: none;
-    }
-
-    .card-layer.is-memory-returning .deck-card:not(.is-returning) {
-      opacity: 1 !important;
     }
 
     .card-word-row {
@@ -2547,7 +2635,7 @@ const output = `<!doctype html>
 
       .deck-card {
         border-radius: 18px;
-        transform-origin: 50% 50% -520px;
+        transform-origin: 50% 50% var(--card-transform-origin-depth);
       }
 
       .card-scroll { padding: 112px 28px 34px; }
@@ -2612,6 +2700,10 @@ const output = `<!doctype html>
       --playful-cloud-left: url("${playfulCloudLeftDataUri}");
       --playful-cloud-right: url("${playfulCloudRightDataUri}");
       --playful-sun: url("${playfulSunDataUri}");
+      --memory-stack-one-surface:
+        radial-gradient(circle at 17% 12%, rgba(255,255,255,0.82) 0 2px, transparent 3px),
+        repeating-linear-gradient(0deg, rgba(151,101,75,0.018) 0 1px, transparent 1px 5px),
+        #ffe3a3;
     }
 
     html[data-theme="playful"] body {
@@ -2768,16 +2860,25 @@ const output = `<!doctype html>
 
     html[data-theme="playful"] .memory-toggle,
     html[data-theme="playful"] .settings-toggle {
-      border: 5px solid #fff7e5;
+      height: 46px;
+      min-width: 82px;
+      padding: 0 17px;
+      border: 4px solid #fff7e5;
+      border-radius: 15px;
       color: #fff;
       background: #efbd3f;
-      box-shadow: 0 4px 0 #c69037, 0 10px 22px rgba(80,59,66,0.18);
+      box-shadow: 0 5px 0 #c69037, 0 11px 22px rgba(80,59,66,0.18), inset 0 1px 0 rgba(255,255,255,0.3);
+      font-family: "Comic Sans MS", "Segoe Print", sans-serif;
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-shadow: 0 1px 0 rgba(72,51,64,0.16);
       backdrop-filter: none;
     }
-    html[data-theme="playful"] .memory-toggle { background: #58aee3; }
-    html[data-theme="playful"] .settings-toggle { background: #a984ca; }
+    html[data-theme="playful"] .memory-toggle { right: 120px; background: #58aee3; box-shadow: 0 5px 0 #378bbd, 0 11px 22px rgba(80,59,66,0.18), inset 0 1px 0 rgba(255,255,255,0.3); }
+    html[data-theme="playful"] .settings-toggle { background: #a984ca; box-shadow: 0 5px 0 #8064a4, 0 11px 22px rgba(80,59,66,0.18), inset 0 1px 0 rgba(255,255,255,0.3); }
     html[data-theme="playful"] .memory-toggle:hover,
-    html[data-theme="playful"] .settings-toggle:hover { color: #fff; filter: brightness(1.04); }
+    html[data-theme="playful"] .settings-toggle:hover { color: #fff; filter: brightness(1.05); transform: translateY(-1px); }
     html[data-theme="playful"] body.settings-open .memory-toggle::before,
     html[data-theme="playful"] body.settings-open .settings-toggle::before { opacity: 0; }
     html[data-theme="playful"] .memory-badge { border-color: #fff7e5; background: #e96872; }
@@ -2869,6 +2970,18 @@ const output = `<!doctype html>
         #fff8e7;
       box-shadow: 0 9px 0 #d9958f, 0 25px 56px rgba(58,72,91,0.22), inset 0 0 0 2px rgba(218,107,111,0.35);
     }
+    html[data-theme="playful"] .memory-panel--yielding::after {
+      content: "";
+      position: absolute;
+      inset: 16px;
+      z-index: 2;
+      border: 2px dashed rgba(215,112,108,0.5);
+      border-radius: 18px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms linear;
+    }
+    html[data-theme="playful"] .memory-backdrop.is-undo-returning > .memory-panel--yielding::after { opacity: 1; }
     html[data-theme="playful"] .memory-eyebrow { color: #5a9dc5; background: #d9eff8; padding: 4px 9px; border-radius: 6px; }
     html[data-theme="playful"] .memory-title { color: #a8424f; font-weight: 900; }
     html[data-theme="playful"] .memory-icon-button,
@@ -2910,9 +3023,21 @@ const output = `<!doctype html>
     html[data-theme="playful"] .toast { border: 4px solid #fff2d8; border-radius: 18px; color: #573945; background: #fff8e7; box-shadow: 0 5px 0 rgba(122,79,69,0.16), 0 16px 34px rgba(70,59,66,0.18); }
 
     @media (max-width: 700px) {
+      html[data-theme="playful"] .settings-toggle,
+      html[data-theme="playful"] .memory-toggle {
+        min-width: 70px;
+        height: 41px;
+        padding: 0 12px;
+        border-width: 3px;
+        border-radius: 13px;
+        font-size: 13px;
+      }
+      html[data-theme="playful"] .settings-toggle { right: 10px; }
+      html[data-theme="playful"] .memory-toggle { right: 90px; }
       html[data-theme="playful"] .deck-stage { width: calc(100vw - 36px); height: calc(100vh - 102px); }
       html[data-theme="playful"] .deck-card { border-width: 6px; border-radius: 26px; }
       html[data-theme="playful"] .deck-card::before { inset: 11px; border-radius: 16px; }
+      html[data-theme="playful"] .memory-panel--yielding::after { inset: 11px; border-radius: 16px; }
       html[data-theme="playful"] .card-scroll { padding: 106px 25px 34px; }
       html[data-theme="playful"] .card-progress-count { top: 24px; padding: 7px 14px; }
       html[data-theme="playful"] .deck-card .sound-button,
@@ -2934,19 +3059,17 @@ const output = `<!doctype html>
       .settings-toggle::before,
       .memory-toggle::before,
       .memory-backdrop,
-      .memory-panel,
-      .settings-toggle .icon,
-      .memory-toggle .icon { transition-duration: 220ms !important; }
+      .memory-panel { transition-duration: 220ms !important; }
     }
   </style>
 </head>
 <body data-study-mode="full">
   <button class="memory-toggle" id="memoryButton" type="button" aria-label="打开今日复习" aria-pressed="false" title="今日复习" disabled>
-    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.2A4 4 0 0 0 5 9.1c0 .5.1 1 .3 1.4A3.5 3.5 0 0 0 7 17h2.5"></path><path d="M10 4v14"></path><path d="M10 7.5H8M10 12H7.5M10 16H8"></path><circle cx="16.5" cy="15.5" r="4.5"></circle><path d="M16.5 13v2.8l1.8 1"></path></svg>
+    <span class="chrome-button__label">模式</span>
     <span class="memory-badge" id="memoryBadge" hidden>0</span>
   </button>
   <button class="settings-toggle" id="settingsButton" type="button" aria-label="打开设置" aria-controls="settingsDrawer" aria-expanded="false" title="打开设置">
-    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15.03 1.7 1.7 0 0 0 3.08 14H3v-4h.08A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.06-.06L7.03 4.2l.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 10 3.08V3h4v.08a1.7 1.7 0 0 0 1.03 1.52 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"></path></svg>
+    <span class="chrome-button__label">设置</span>
   </button>
 
   <aside class="settings-drawer" id="settingsDrawer" aria-label="页面设置" aria-hidden="true" inert>
@@ -2999,12 +3122,14 @@ const output = `<!doctype html>
       </button>
       <div class="memory-settings-panel" id="memorySettingsPanel" hidden>
         <p class="memory-summary" id="memorySummary">正在读取当前词库的学习进度…</p>
-        <label class="memory-setting-row" for="memoryDailyNewInput">
-          <span>每日新词</span>
-          <input class="memory-daily-input" id="memoryDailyNewInput" type="number" min="0" max="100" step="1" value="10">
-        </label>
-        <div class="memory-daily-presets" id="memoryDailyPresets" role="group" aria-label="每日新词快捷设置">
-          <button type="button" data-memory-daily="0">0</button><button type="button" data-memory-daily="5">5</button><button type="button" data-memory-daily="10">10</button><button type="button" data-memory-daily="20">20</button>
+        <div class="memory-setting-row memory-daily-row">
+          <label class="memory-daily-label" for="memoryDailyNewInput">每日新词</label>
+          <div class="memory-daily-controls">
+            <div class="memory-daily-presets" id="memoryDailyPresets" role="group" aria-label="每日新词快捷设置">
+              <button type="button" data-memory-daily="30">30</button><button type="button" data-memory-daily="50">50</button><button type="button" data-memory-daily="100">100</button>
+            </div>
+            <input class="memory-daily-input" id="memoryDailyNewInput" type="number" min="0" max="600" step="10" value="20" inputmode="numeric" aria-label="每日新词数量，0到600">
+          </div>
         </div>
         <div class="memory-setting-actions">
           <button class="memory-setting-button" id="memoryExportButton" type="button">导出进度</button>
@@ -3274,7 +3399,15 @@ const output = `<!doctype html>
       if (!book) return null;
       if (Array.isArray(book.words)) return book;
       if (!book.url || APP_BUILD_TARGET !== 'web') throw new Error('词库数据不可用，请重新构建应用。');
-      const response = await window.fetch(book.url, { cache: 'force-cache' });
+      let response;
+      try {
+        response = await window.fetch(book.url, { cache: 'force-cache' });
+      } catch {
+        const message = window.location.protocol === 'file:'
+          ? '当前打开的是在线版，浏览器无法直接读取词库文件；请打开单文件离线版 vocabulary-flashcards.html。'
+          : '词库加载失败，请检查网络连接，或确认 data/books 目录已完整部署。';
+        throw new Error(message);
+      }
       if (!response.ok) throw new Error('词库加载失败（HTTP ' + response.status + '）。');
       const payload = await response.json();
       if (!payload || payload.formatVersion !== 1 || payload.id !== book.id || !Array.isArray(payload.words)) {
@@ -3290,17 +3423,31 @@ const output = `<!doctype html>
       return 'custom:' + encodeURIComponent(String(fileName || '').trim().toLocaleLowerCase());
     }
 
+    function jsonWordbookFileName(fileName) {
+      const normalized = String(fileName || '').trim() || '我的单词本.html';
+      if (/\\.html?$/i.test(normalized)) return normalized.replace(/\\.html?$/i, '.json');
+      return /\\.json$/i.test(normalized) ? normalized : normalized + '.json';
+    }
+
     const PROJECT_PERSONAL_BOOK_IDS = new Set(PROJECT_PERSONAL_BOOKS.map((book) => book.id));
 
     function normalizeCustomBook(book) {
       if (!book || typeof book !== 'object' || !Array.isArray(book.words)) return null;
       const words = book.words.map(normalizeStoredWord).filter(Boolean);
       if (!words.length) return null;
-      const fileName = typeof book.fileName === 'string' && book.fileName.trim() ? book.fileName.trim() : '我的单词本.html';
+      const originalFileName = typeof book.fileName === 'string' && book.fileName.trim() ? book.fileName.trim() : '我的单词本.html';
+      const sourceFileName = typeof book.sourceFileName === 'string' && book.sourceFileName.trim()
+        ? book.sourceFileName.trim()
+        : (/\\.html?$/i.test(originalFileName) ? originalFileName : '');
+      const identityFileName = sourceFileName || originalFileName;
+      const fileName = jsonWordbookFileName(originalFileName);
       return {
-        id: typeof book.id === 'string' && book.id ? book.id : createCustomBookId(fileName),
-        name: typeof book.name === 'string' && book.name.trim() ? book.name.trim() : fileName.replace(/\\.html?$/i, ''),
+        formatVersion: 1,
+        id: typeof book.id === 'string' && book.id ? book.id : createCustomBookId(identityFileName),
+        name: typeof book.name === 'string' && book.name.trim() ? book.name.trim() : identityFileName.replace(/\\.(?:html?|json)$/i, ''),
         fileName,
+        sourceFileName,
+        sourceFormat: book.sourceFormat === 'html' || /\\.html?$/i.test(sourceFileName) ? 'html' : 'json',
         words
       };
     }
@@ -3343,9 +3490,12 @@ const output = `<!doctype html>
         if (!rememberedWords.length) return null;
         const legacyFileName = fileNames.length === 1 ? fileNames[0] : '已导入的 ' + fileNames.length + ' 个单词本.html';
         customBook = {
+          formatVersion: 1,
           id: createCustomBookId(legacyFileName),
           name: legacyFileName.replace(/\\.html?$/i, ''),
-          fileName: legacyFileName,
+          fileName: jsonWordbookFileName(legacyFileName),
+          sourceFileName: legacyFileName,
+          sourceFormat: 'html',
           words: rememberedWords
         };
         customBooks.push(customBook);
@@ -3360,6 +3510,32 @@ const output = `<!doctype html>
         customBooks,
         deletedProjectPersonalBookIds,
         fileNames
+      };
+    }
+
+    function rememberedPayloadNeedsJsonMigration(saved) {
+      const hasLegacyBooks = Array.isArray(saved?.customBooks) && saved.customBooks.some((book) => {
+        if (!book || typeof book !== 'object') return true;
+        return book.formatVersion !== 1
+          || typeof book.fileName !== 'string'
+          || !/\\.json$/i.test(book.fileName)
+          || (book.sourceFormat !== 'html' && book.sourceFormat !== 'json');
+      });
+      const hasLegacyFileNames = Array.isArray(saved?.fileNames)
+        && saved.fileNames.some((fileName) => typeof fileName === 'string' && /\\.html?$/i.test(fileName));
+      return hasLegacyBooks || hasLegacyFileNames;
+    }
+
+    function jsonRememberedPayload(vocabulary) {
+      return {
+        version: 1,
+        builtInBookId: vocabulary.builtInBookId,
+        customBookId: vocabulary.customBookId,
+        customBooks: vocabulary.customBooks,
+        deletedProjectPersonalBookIds: vocabulary.deletedProjectPersonalBookIds,
+        fileNames: vocabulary.fileNames.map(jsonWordbookFileName),
+        savedAt: new Date().toISOString(),
+        words: vocabulary.builtInBookId ? [] : vocabulary.words
       };
     }
 
@@ -3420,7 +3596,12 @@ const output = `<!doctype html>
           : null;
         if (savedBuiltInBookId) await ensureBuiltInBookWords(savedBuiltInBookId);
         const rememberedVocabulary = normalizeRememberedPayload(saved);
-        if (rememberedVocabulary) return rememberedVocabulary;
+        if (rememberedVocabulary) {
+          if (rememberedPayloadNeedsJsonMigration(saved)) {
+            await writeRememberedPayload(jsonRememberedPayload(rememberedVocabulary));
+          }
+          return rememberedVocabulary;
+        }
       } catch {
         // File URLs and privacy modes may not expose IndexedDB; use the compatible fallback.
       }
@@ -3431,16 +3612,7 @@ const output = `<!doctype html>
       if (localBuiltInBookId) await ensureBuiltInBookWords(localBuiltInBookId);
       const localVocabulary = normalizeRememberedPayload(localPayload);
       if (localVocabulary) {
-        writeRememberedPayload({
-          version: 1,
-          builtInBookId: localVocabulary.builtInBookId,
-          customBookId: localVocabulary.customBookId,
-          customBooks: localVocabulary.customBooks,
-          deletedProjectPersonalBookIds: localVocabulary.deletedProjectPersonalBookIds,
-          fileNames: localVocabulary.fileNames,
-          savedAt: new Date().toISOString(),
-          words: localVocabulary.words
-        }).then(() => {
+        writeRememberedPayload(jsonRememberedPayload(localVocabulary)).then(() => {
           try { window.localStorage.removeItem(vocabularyStorageKey); } catch { /* Keep the compatible copy. */ }
         }).catch(() => {});
       }
@@ -3565,7 +3737,8 @@ const output = `<!doctype html>
     const memoryVolatileCards = new Map();
     const memoryVolatileLogs = new Map();
     let memoryModeLoading = false;
-    let memoryClosing = false;
+    let memorySessionNeedsRebuild = false;
+    let memorySettingsSaveQueue = Promise.resolve();
     let memoryBlockedShakeTimer = 0;
     let memoryPreview = null;
     let memoryPreviewTime = null;
@@ -3677,9 +3850,18 @@ const output = `<!doctype html>
       memoryDailyNewInput.value = String(memoryDailyNew);
     }
 
-    async function saveMemorySettings() {
-      memoryDailyNew = memoryCore.clampDailyNew(memoryDailyNewInput.value);
-      memoryDailyNewInput.value = String(memoryDailyNew);
+    function saveMemorySettings() {
+      const requestedDailyNew = memoryCore.clampDailyNew(memoryDailyNewInput.value);
+      memoryDailyNewInput.value = String(requestedDailyNew);
+      memorySettingsSaveQueue = memorySettingsSaveQueue
+        .catch(() => {})
+        .then(() => persistMemorySettings(requestedDailyNew));
+      return memorySettingsSaveQueue;
+    }
+
+    async function persistMemorySettings(requestedDailyNew) {
+      memoryDailyNew = requestedDailyNew;
+      const bookId = activeMemoryBookId();
       try {
         await memoryWriteMeta('memory-settings', { dailyNew: memoryDailyNew, updatedAt: Date.now() });
         memoryStorageAvailable = true;
@@ -3688,7 +3870,10 @@ const output = `<!doctype html>
         memoryStorageAvailable = false;
         showImportStatus('浏览器无法保存记忆曲线设置，本次调整仅在当前页面有效。', true);
       }
-      refreshMemorySummary();
+      invalidateMemoryOverview(bookId);
+      if (memoryIsOpen) memorySessionNeedsRebuild = true;
+      else invalidateMemorySessionHistory(bookId);
+      await refreshMemorySummary();
     }
 
     async function memoryOverview(bookId) {
@@ -3787,11 +3972,33 @@ const output = `<!doctype html>
         const saved = await memoryReadMeta(metaKey);
         if (saved && Array.isArray(saved.wordKeys)) {
           hasSavedSelection = true;
-          selectedKeys = saved.wordKeys.filter((key) => wordMap.has(key) && !overview.learned.has(key));
+          const resizedKeys = memoryCore.resizeDailyNewWordKeys(
+            WORDS,
+            overview.learned,
+            saved.wordKeys,
+            bookId,
+            dateKey,
+            memoryDailyNew
+          );
+          const savedLimit = memoryCore.clampDailyNew(saved.limit);
+          const selectionChanged = savedLimit !== memoryDailyNew
+            || resizedKeys.length !== saved.wordKeys.length
+            || resizedKeys.some((key, index) => key !== saved.wordKeys[index]);
+          if (selectionChanged) {
+            await memoryWriteMeta(metaKey, {
+              ...saved,
+              bookId,
+              dateKey,
+              wordKeys: resizedKeys,
+              limit: memoryDailyNew,
+              updatedAt: Date.now()
+            });
+          }
+          selectedKeys = resizedKeys.filter((key) => wordMap.has(key) && !overview.learned.has(key));
         }
         if (!hasSavedSelection && overview.due.length < memoryCore.backlogThreshold) {
           selectedKeys = memoryCore.selectDailyNewWords(WORDS, overview.learned, bookId, dateKey, memoryDailyNew).map((item) => item.wordKey);
-          await memoryWriteMeta(metaKey, { bookId, dateKey, wordKeys: selectedKeys, createdAt: Date.now() });
+          await memoryWriteMeta(metaKey, { bookId, dateKey, wordKeys: selectedKeys, limit: memoryDailyNew, createdAt: Date.now() });
         }
       } catch {
         memoryStorageAvailable = false;
@@ -4101,6 +4308,7 @@ const output = `<!doctype html>
     function startMemoryStackRetreat(retreat) {
       retreat.cards.forEach((card) => {
         const deckPosition = Number(card.dataset.deckPosition);
+        if (deckPosition === position) card.classList.add('is-memory-hidden-current');
         setCardOffset(card, deckPosition - position + 1);
       });
     }
@@ -4209,11 +4417,6 @@ const output = `<!doctype html>
     function cancelActiveCardTransition(reason = 'interrupted') {
       if (animationCoordinator.isIdle) return false;
       animationCoordinator.cancelActive(reason);
-      if (memoryClosing) {
-        finishMemoryReviewClose();
-        return true;
-      }
-
       memoryBackdrop.querySelectorAll('.memory-panel--incoming, .memory-panel--yielding').forEach((panel) => panel.remove());
       memoryPanel.classList.remove(
         'memory-panel--flight',
@@ -4225,7 +4428,7 @@ const output = `<!doctype html>
       memoryPanel.style.removeProperty('visibility');
       clearExitPoint(memoryPanel);
       memoryBackdrop.classList.remove('is-transitioning', 'is-card-advancing', 'is-undo-returning');
-      cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing', 'is-memory-retreating');
+      cardLayer.classList.remove('is-transitioning', 'is-memory-advancing', 'is-memory-retreating');
       isTransitioning = false;
       classicDeckController.cancelMove();
       if (memoryIsOpen) renderMemoryCard(false);
@@ -4247,7 +4450,7 @@ const output = `<!doctype html>
     }
 
     async function openMemoryReview() {
-      if (memoryIsOpen || memoryModeLoading || memoryClosing || !animationCoordinator.isIdle || !isReady) return;
+      if (memoryIsOpen || memoryModeLoading || !animationCoordinator.isIdle || !isReady) return;
       memoryModeLoading = true;
       memoryButton.disabled = true;
       try {
@@ -4271,7 +4474,6 @@ const output = `<!doctype html>
         memoryButton.setAttribute('aria-pressed', 'true');
         memoryButton.setAttribute('aria-label', '返回经典模式');
         memoryButton.title = '返回经典模式（Esc）';
-        settingsButton.disabled = true;
         cardLayer.setAttribute('aria-hidden', 'true');
         memoryBackdrop.setAttribute('aria-hidden', 'false');
         memoryBackdrop.hidden = false;
@@ -4286,10 +4488,13 @@ const output = `<!doctype html>
       }
     }
 
-    function finishMemoryReviewClose(transition = null) {
+    function finishMemoryReviewClose() {
       cancelMemorySpellingAdvance();
-      memoryClosing = false;
       memoryReviewController.setOpen(false);
+      if (memorySessionNeedsRebuild) {
+        invalidateMemorySessionHistory(activeMemoryBookId());
+        memorySessionNeedsRebuild = false;
+      }
       window.clearTimeout(memoryBlockedShakeTimer);
       memoryBlockedShakeTimer = 0;
       memoryPanel.classList.remove('is-good-blocked');
@@ -4301,7 +4506,7 @@ const output = `<!doctype html>
       settingsButton.disabled = !isReady;
       cardLayer.setAttribute('aria-hidden', 'false');
       memoryBackdrop.setAttribute('aria-hidden', 'true');
-      memoryBackdrop.classList.remove('is-visible', 'is-returning-to-classic');
+      memoryBackdrop.classList.remove('is-visible');
       memoryBackdrop.hidden = true;
       memoryBackdrop.querySelectorAll('.memory-panel--flight, .memory-panel--incoming, .memory-panel--yielding').forEach((panel) => {
         if (panel !== memoryPanel) panel.remove();
@@ -4309,8 +4514,7 @@ const output = `<!doctype html>
       memoryPanel.classList.remove('memory-panel--flight', 'memory-panel--incoming', 'memory-panel--returning', 'is-flying-out', 'is-transition-reset');
       memoryPanel.style.removeProperty('visibility');
       clearExitPoint(memoryPanel);
-      cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing', 'is-memory-retreating');
-      if (transition?.isActive()) transition.finish();
+      cardLayer.classList.remove('is-transitioning', 'is-memory-advancing', 'is-memory-retreating');
       renderStable();
       refreshMemorySummary();
       syncChrome();
@@ -4318,35 +4522,8 @@ const output = `<!doctype html>
     }
 
     function closeMemoryReview() {
-      if (!memoryIsOpen || memoryRatingPending || memoryClosing || !animationCoordinator.isIdle) return;
-      if (reducedMotion.matches) {
-        finishMemoryReviewClose();
-        return;
-      }
-
-      const transition = animationCoordinator.begin('closing-memory', { mode: 'memory', direction: 'backward' });
-
-      const incomingCard = cardLayer.querySelector('.deck-card[data-offset="0"]');
-      if (!(incomingCard instanceof HTMLElement)) {
-        finishMemoryReviewClose(transition);
-        return;
-      }
-
-      memoryClosing = true;
-      memoryButton.disabled = true;
-      memoryReturnButton.disabled = true;
-      applyExitPoint(incomingCard, exitPointFor(position));
-      incomingCard.classList.add('is-incoming', 'is-returning');
-      cardLayer.classList.add('is-memory-returning');
-      const returningFinished = waitForElementTransition(incomingCard, 'transform', 760);
-      void incomingCard.offsetWidth;
-
-      afterTwoAnimationFrames(() => {
-          transition.move('returning-classic');
-          cardLayer.classList.add('is-transitioning');
-          memoryBackdrop.classList.add('is-returning-to-classic');
-          returningFinished.then(() => finishMemoryReviewClose(transition));
-      });
+      if (!memoryIsOpen || memoryRatingPending || !animationCoordinator.isIdle) return;
+      finishMemoryReviewClose();
     }
 
     async function rateMemoryCard(rating) {
@@ -4858,15 +5035,15 @@ const output = `<!doctype html>
 
         WORDS = processed.combinedWords;
         const total = WORDS.length;
-        storeImportedBooks(validBooks);
+        const storedBooks = storeImportedBooks(validBooks);
         renderWordbookLists();
-        const remembered = await rememberVocabulary({ fileNames: validBooks.map((book) => book.fileName) });
+        const remembered = await rememberVocabulary({ fileNames: storedBooks.map((book) => book.fileName) });
         const skipped = files.length - validBooks.length;
         shuffle();
         refreshMemorySummary();
         let message = '已载入 ' + validBooks.length + ' 个生词本，共 ' + total + ' 个词条';
         if (skipped) message += '；忽略 ' + skipped + ' 个无法识别的文件';
-        message += remembered ? '；下次打开将自动恢复' : '；浏览器未能保存，下次打开会恢复默认词库';
+        message += remembered ? '；已转换为 JSON 保存，下次打开将自动恢复' : '；浏览器未能保存，下次打开会恢复默认词库';
         showImportStatus(message);
       } catch (error) {
         showImportStatus(error instanceof Error ? error.message : '导入失败，请检查文件格式。', true);
@@ -5451,7 +5628,7 @@ const output = `<!doctype html>
       if (!(stackedCard instanceof HTMLElement) || !cardLayer.contains(stackedCard)) return false;
       event.preventDefault();
       if (memoryIsOpen) {
-        if (!memoryCurrentItem() || memoryClosing) return true;
+        if (!memoryCurrentItem()) return true;
         if (memoryGoodButton.disabled || memoryRatingPending || memoryBackdrop.classList.contains('is-transitioning')) {
           shakeBlockedMemoryGood();
           return true;
@@ -5898,6 +6075,14 @@ const output = `<!doctype html>
 
     window.addEventListener('keydown', (event) => {
       if (memoryIsOpen) {
+        if (settingsController.state.settingsOpen) {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setSettingsOpen(false);
+            settingsButton.focus();
+          }
+          return;
+        }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
           event.preventDefault();
           undoMemoryRating();
@@ -6018,7 +6203,17 @@ const output = `<!doctype html>
 </body>
 </html>`;
 
+const webFileProtocolRedirect = `  <script>
+    if (window.location.protocol === 'file:') {
+      window.location.replace('../offline/vocabulary-flashcards.html' + window.location.search + window.location.hash);
+    }
+  </script>`;
+
 const webOutput = output
+  .replace(
+    '  <meta name="theme-color" content="#edf4fc">',
+    '  <meta name="theme-color" content="#edf4fc">\n' + webFileProtocolRedirect,
+  )
   .replace(
     "const APP_BUILD_TARGET = 'offline';",
     "const APP_BUILD_TARGET = 'web';",

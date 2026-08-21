@@ -69,7 +69,7 @@ test("旧 token 无法清理更新的动画", () => {
 
 test("取消会中止 signal 并统一恢复 idle", () => {
   const coordinator = new AnimationCoordinator();
-  const transition = coordinator.begin("closing-memory");
+  const transition = coordinator.begin("exiting-current");
 
   assert.equal(transition.cancel("mode-changed"), true);
   assert.equal(transition.signal.aborted, true);

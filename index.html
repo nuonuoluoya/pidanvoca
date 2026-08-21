@@ -6,17 +6,26 @@
     <meta name="referrer" content="no-referrer" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'sha256-NvjvWHkiCwq0aBdYlbdSrryMalMXGhsnAe+mIcq3Tio='; script-src-attr 'none'; style-src 'none'; img-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'self'; script-src 'sha256-Kp9Mll0KDcppDgyZoConzR46K85wXxwl632HsaBwayw='; script-src-attr 'none'; style-src 'none'; img-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
     />
-    <meta http-equiv="refresh" content="0; url=./dist/web/index.html" />
+    <meta http-equiv="refresh" content="1; url=./dist/web/index.html" />
     <title>随机单词本</title>
     <script>
+      const target =
+        window.location.protocol === "file:"
+          ? "./vocabulary-flashcards.html"
+          : "./dist/web/index.html";
       window.location.replace(
-        "./dist/web/index.html" + window.location.search + window.location.hash,
+        target + window.location.search + window.location.hash,
       );
     </script>
   </head>
   <body>
-    <p>正在打开<a href="./dist/web/index.html">随机单词本</a>…</p>
+    <p>
+      正在打开<a href="./dist/web/index.html">在线版</a>；直接下载使用请打开<a
+        href="./vocabulary-flashcards.html"
+        >离线版</a
+      >。
+    </p>
   </body>
 </html>

@@ -13,6 +13,15 @@
   function createWordbookControllerApi() {
     "use strict";
 
+    function jsonFileName(fileName) {
+      const normalized = String(fileName || "").trim() || "我的单词本.html";
+      return /\.html?$/i.test(normalized)
+        ? normalized.replace(/\.html?$/i, ".json")
+        : /\.json$/i.test(normalized)
+          ? normalized
+          : normalized + ".json";
+    }
+
     class WordbookController {
       constructor(options) {
         this.builtInBooks = options.builtInBooks;
@@ -104,10 +113,14 @@
           this.state.customBooks.map((book) => [book.id, book]),
         );
         const storedBooks = importedBooks.map((book) => {
+          const sourceFileName = String(book.fileName || "").trim();
           const customBook = {
-            id: createCustomBookId(book.fileName),
-            name: book.fileName.replace(/\.html?$/i, ""),
-            fileName: book.fileName,
+            formatVersion: 1,
+            id: createCustomBookId(sourceFileName),
+            name: sourceFileName.replace(/\.html?$/i, ""),
+            fileName: jsonFileName(sourceFileName),
+            sourceFileName,
+            sourceFormat: "html",
             words: book.entries,
           };
           bookMap.set(customBook.id, customBook);

@@ -43,10 +43,67 @@ test("同一天的新词选择稳定且排除已学习词", () => {
   );
 });
 
-test("每日新词缺省值为 10，显式设置 0 时仍可暂停新词", () => {
-  assert.equal(Core.clampDailyNew(null), 10);
-  assert.equal(Core.clampDailyNew(undefined), 10);
+test("调整每日上限时保留已学习词并只增减未学习名单", () => {
+  const words = Array.from({ length: 80 }, (_, index) => ({
+    word: "word-" + index,
+  }));
+  const initial = Core.selectDailyNewWords(
+    words,
+    new Set(),
+    "book-a",
+    "2026-08-20",
+    20,
+  ).map((item) => item.wordKey);
+  const learned = new Set(initial.slice(0, 5));
+
+  const increased = Core.resizeDailyNewWordKeys(
+    words,
+    learned,
+    initial,
+    "book-a",
+    "2026-08-20",
+    50,
+  );
+  assert.equal(increased.length, 50);
+  assert.deepEqual(increased.slice(0, initial.length), initial);
+  assert.equal(new Set(increased).size, increased.length);
+
+  const decreased = Core.resizeDailyNewWordKeys(
+    words,
+    learned,
+    increased,
+    "book-a",
+    "2026-08-20",
+    10,
+  );
+  assert.equal(decreased.length, 10);
+  assert.equal(
+    [...learned].every((wordKey) => decreased.includes(wordKey)),
+    true,
+  );
+  assert.equal(decreased.filter((wordKey) => !learned.has(wordKey)).length, 5);
+
+  const belowCompleted = Core.resizeDailyNewWordKeys(
+    words,
+    learned,
+    decreased,
+    "book-a",
+    "2026-08-20",
+    3,
+  );
+  assert.equal(belowCompleted.length, learned.size);
+  assert.equal(
+    [...learned].every((wordKey) => belowCompleted.includes(wordKey)),
+    true,
+  );
+});
+
+test("每日新词缺省值为 20，显式设置 0 时仍可暂停新词", () => {
+  assert.equal(Core.clampDailyNew(null), 20);
+  assert.equal(Core.clampDailyNew(undefined), 20);
   assert.equal(Core.clampDailyNew(0), 0);
+  assert.equal(Core.clampDailyNew(600), 600);
+  assert.equal(Core.clampDailyNew(601), 600);
 });
 
 test("FSRS 两档评分生成 10 分钟重学与更长 Good 间隔", () => {

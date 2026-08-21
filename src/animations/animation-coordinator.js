@@ -14,12 +14,7 @@
     "use strict";
 
     const transitions = Object.freeze({
-      idle: new Set([
-        "saving-rating",
-        "exiting-current",
-        "undo-returning",
-        "closing-memory",
-      ]),
+      idle: new Set(["saving-rating", "exiting-current", "undo-returning"]),
       "saving-rating": new Set(["exiting-current", "cancelled"]),
       "exiting-current": new Set([
         "advancing-stack",
@@ -34,8 +29,6 @@
       ]),
       "revealing-incoming": new Set(["settling", "cancelled"]),
       "undo-returning": new Set(["settling", "cancelled"]),
-      "closing-memory": new Set(["returning-classic", "settling", "cancelled"]),
-      "returning-classic": new Set(["settling", "cancelled"]),
       settling: new Set(["idle", "cancelled"]),
       cancelled: new Set(["idle"]),
     });

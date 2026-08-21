@@ -25,7 +25,7 @@
 ### 单词本管理
 
 - 内置 7 套词书，并在设置中统一归类为“内置”。
-- 可一次导入一个或多个 `.html` / `.htm` 生词本；解析过程完全在浏览器本地完成。
+- 可一次导入一个或多个 `.html` / `.htm` 生词本；解析过程完全在浏览器本地完成，并转换成版本化 JSON 保存。
 - 导入后的词书显示在“我的单词本”中；没有自定义词书时该分组自动隐藏。
 - 多文件导入时既保留各个词书，也提供去重合并后的临时学习视图。
 - 支持删除“我的单词本”，并自动恢复上次选择的具体词书。
@@ -78,9 +78,9 @@ git clone https://github.com/nuonuoluoya/pidanvoca.git
 cd pidanvoca
 ```
 
-在线版入口是 `index.html`，会跳转到 `dist/web/index.html`。它启动时只携带默认词书，切换其他内置词书时根据 manifest 按需加载；Service Worker 按词库内容版本缓存资源，发现新版本时提示刷新但不会打断当前学习。本地开发时应通过静态服务器访问，以便浏览器正常请求 JSON 词库。
+在线版入口是 `index.html`，通过 HTTP/HTTPS 访问时会跳转到 `dist/web/index.html`。它启动时只携带默认词书，切换其他内置词书时根据 manifest 按需加载；Service Worker 按词库内容版本缓存资源，发现新版本时提示刷新但不会打断当前学习。本地开发时应通过静态服务器访问，以便浏览器正常请求 JSON 词库。
 
-离线使用可只下载 [`vocabulary-flashcards.html`](./vocabulary-flashcards.html) 或 `dist/offline/vocabulary-flashcards.html`。两者都内嵌页面代码、FSRS 调度器和全部内置词书，可直接通过 `file://` 打开且不依赖 CDN。
+直接双击根目录 `index.html` 时会自动转到离线版。离线使用也可只下载 [`vocabulary-flashcards.html`](./vocabulary-flashcards.html) 或 `dist/offline/vocabulary-flashcards.html`；它们都内嵌页面代码、FSRS 调度器和全部内置词书，可直接通过 `file://` 打开且不依赖 CDN。
 
 ## 使用方法
 
@@ -126,7 +126,7 @@ cd pidanvoca
 ## 记忆曲线与本地进度
 
 - 每个具体词书独立记录 FSRS 卡片状态；多文件合并产生的临时视图不会建立记忆曲线记录。
-- 默认每日加入 10 个新词；到期积压达到 50 张时暂停加入新词。
+- 默认每日加入 20 个新词，快捷设置提供 30、50、100，手动输入上限为 600；到期积压达到 50 张时暂停加入新词。
 - “忘记”使用 10 分钟学习/重学步骤；“记得”的下次间隔由 FSRS 动态计算并显示在按钮上。
 - 到期卡优先于新词；同一天的新词选择保持稳定。
 - 设置中的“记忆曲线”可调整每日新词数量，并导出、合并导入、替换导入或重置进度。
@@ -135,7 +135,7 @@ cd pidanvoca
 
 ## 导入自己的词书
 
-在“设置 → 导入生词本”中选择一个或多个 `.html` / `.htm` 文件。文件只在浏览器本地读取，不会上传到服务器。
+在“设置 → 导入生词本”中选择一个或多个 `.html` / `.htm` 文件。文件只在浏览器本地读取，不会上传到服务器；解析成功后会转换为 `formatVersion: 1` 的 JSON 兼容对象，保存到“我的单词本”。
 
 兼容的词书使用 HTML 表格，每行至少包含以下 5 个单元格：
 
@@ -166,7 +166,7 @@ npm run perf:check
 - `npm run release:check`：在干净工作区运行全部质量、性能、浏览器与生成文件发布门禁。
 - `npm run build`：从同一套源码生成 `dist/web/index.html` 在线壳、`data/books.manifest.json` 与 JSON 词库、`dist/offline/vocabulary-flashcards.html`，并同步根目录离线文件。
 - 默认构建不会读取 `wordbooks/my/`，避免将私人词书写入生成文件。
-- 如确实需要把 `wordbooks/my/` 中的 HTML 词书嵌入构建结果，可在构建进程中设置 `INCLUDE_PERSONAL_WORDBOOKS=1`。生成文件将包含私人数据，提交或分享前请检查内容。
+- 如确实需要把 `wordbooks/my/` 中的 JSON 词书（也兼容旧 HTML）嵌入构建结果，可在构建进程中设置 `INCLUDE_PERSONAL_WORDBOOKS=1`。生成文件将包含私人数据，提交或分享前请检查内容。
 
 ## 项目结构
 
@@ -186,7 +186,7 @@ npm run perf:check
 ├─ package-lock.json            # npm 锁文件
 ├─ tests/                       # 单元、IndexedDB 集成与浏览器 E2E 测试
 └─ wordbooks/
-   ├─ *-vocabulary.html         # 7 套内置词书源文件
+   ├─ *-vocabulary.json         # 7 套内置、带版本号的 JSON 词书源文件
    └─ my/                       # 可选私人词书目录，默认构建忽略
 ```
 

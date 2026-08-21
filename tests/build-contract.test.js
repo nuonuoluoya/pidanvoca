@@ -14,6 +14,7 @@ const offlineHtmlPath = path.join(
   "vocabulary-flashcards.html",
 );
 const manifestPath = path.join(projectRoot, "data", "books.manifest.json");
+const sourceWordbooksPath = path.join(projectRoot, "wordbooks");
 const serviceWorkerPath = path.join(
   projectRoot,
   "dist",
@@ -31,13 +32,22 @@ test("生成页面带有禁止直接编辑的构建标记", () => {
   );
 });
 
-test("GitHub Pages 入口指向在线版并保留查询参数与哈希", () => {
+test("入口按协议选择在线或离线版并保留查询参数与哈希", () => {
   const html = fs.readFileSync(indexHtmlPath, "utf8");
   assert.match(html, /url=\.\/dist\/web\/index\.html/);
+  assert.match(html, /window\.location\.protocol\s*===\s*"file:"/);
+  assert.match(html, /"\.\/vocabulary-flashcards\.html"/);
   assert.match(html, /window\.location\.search\s*\+\s*window\.location\.hash/);
   assert.match(html, /href="\.\/dist\/web\/index\.html"/);
+  assert.match(html, /href="\.\/vocabulary-flashcards\.html"/);
   assert.match(html, /Content-Security-Policy/);
   assert.match(html, /name="referrer" content="no-referrer"/);
+  const inlineScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] || "";
+  const inlineDigest = crypto
+    .createHash("sha256")
+    .update(inlineScript, "utf8")
+    .digest("base64");
+  assert.ok(html.includes(`script-src 'sha256-${inlineDigest}'`));
 });
 
 test("双构建分别生成按需在线壳与自包含离线文件", () => {
@@ -45,6 +55,8 @@ test("双构建分别生成按需在线壳与自包含离线文件", () => {
   const offlineHtml = fs.readFileSync(offlineHtmlPath, "utf8");
   assert.match(webHtml, /const APP_BUILD_TARGET = 'web'/);
   assert.match(webHtml, /"words":null/);
+  assert.match(webHtml, /window\.location\.protocol === 'file:'/);
+  assert.match(webHtml, /\.\.\/offline\/vocabulary-flashcards\.html/);
   assert.match(offlineHtml, /const APP_BUILD_TARGET = 'offline'/);
   assert.doesNotMatch(offlineHtml, /"words":null/);
 });
@@ -61,6 +73,26 @@ test("词库清单保存稳定 ID、数量、Schema 与内容哈希", () => {
     assert.ok(
       fs.existsSync(path.resolve(path.dirname(manifestPath), book.url)),
     );
+  });
+});
+
+test("内置词书以版本化 JSON 保存且不再依赖 HTML 源文件", () => {
+  const sourceFiles = fs.readdirSync(sourceWordbooksPath);
+  assert.equal(
+    sourceFiles.filter((fileName) => /\.html?$/i.test(fileName)).length,
+    0,
+  );
+  const jsonFiles = sourceFiles.filter((fileName) => /\.json$/i.test(fileName));
+  assert.equal(jsonFiles.length, 7);
+  jsonFiles.forEach((fileName) => {
+    const payload = JSON.parse(
+      fs.readFileSync(path.join(sourceWordbooksPath, fileName), "utf8"),
+    );
+    assert.equal(payload.formatVersion, 1);
+    assert.match(payload.id, /\.html$/);
+    assert.ok(payload.name);
+    assert.ok(Array.isArray(payload.words));
+    assert.ok(payload.words.length > 0);
   });
 });
 

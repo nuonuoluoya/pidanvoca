@@ -13,7 +13,7 @@
 
     const backupFormat = "pidanvoca-memory-progress";
     const backupFormatVersion = 1;
-    const defaultDailyNew = 10;
+    const defaultDailyNew = 20;
     const backlogThreshold = 50;
 
     /** @param {unknown} value */
@@ -87,7 +87,7 @@
         return defaultDailyNew;
       const numericValue = Math.round(Number(value));
       if (!Number.isFinite(numericValue)) return defaultDailyNew;
-      return Math.min(100, Math.max(0, numericValue));
+      return Math.min(600, Math.max(0, numericValue));
     }
 
     /**
@@ -122,6 +122,70 @@
         candidates,
         String(bookId) + ":" + String(dateKey),
       ).slice(0, clampDailyNew(limit));
+    }
+
+    /**
+     * Resize a saved daily selection without removing words already learned
+     * from that selection. Pending words are trimmed from the tail or new
+     * deterministic candidates are appended until the daily target is met.
+     * @param {{ word?: unknown }[]} words
+     * @param {Set<string> | Iterable<string> | null | undefined} learnedWordKeys
+     * @param {Iterable<string> | null | undefined} savedWordKeys
+     * @param {unknown} bookId
+     * @param {unknown} dateKey
+     * @param {unknown} limit
+     * @returns {string[]}
+     */
+    function resizeDailyNewWordKeys(
+      words,
+      learnedWordKeys,
+      savedWordKeys,
+      bookId,
+      dateKey,
+      limit,
+    ) {
+      const learned = new Set(
+        Array.from(learnedWordKeys || [], normalizeWordKey).filter(Boolean),
+      );
+      const available = new Set(
+        words
+          .map((entry) => normalizeWordKey(entry && entry.word))
+          .filter(Boolean),
+      );
+      const seen = new Set();
+      const existing = [];
+      for (const value of savedWordKeys || []) {
+        const wordKey = normalizeWordKey(value);
+        if (!wordKey || !available.has(wordKey) || seen.has(wordKey)) continue;
+        seen.add(wordKey);
+        existing.push(wordKey);
+      }
+
+      const completedCount = existing.filter((wordKey) =>
+        learned.has(wordKey),
+      ).length;
+      const pendingTarget = Math.max(0, clampDailyNew(limit) - completedCount);
+      const keptPending = new Set(
+        existing
+          .filter((wordKey) => !learned.has(wordKey))
+          .slice(0, pendingTarget),
+      );
+      const resized = existing.filter(
+        (wordKey) => learned.has(wordKey) || keptPending.has(wordKey),
+      );
+      const shortfall = Math.max(0, pendingTarget - keptPending.size);
+      if (shortfall === 0) return resized;
+
+      const excluded = new Set([...learned, ...existing]);
+      const additions = selectDailyNewWords(
+        words,
+        excluded,
+        bookId,
+        dateKey,
+        shortfall,
+      );
+      additions.forEach((item) => resized.push(item.wordKey));
+      return resized;
     }
 
     /** @param {(Record<string, any> & { due?: Date | number, last_review?: Date | number | null }) | null | undefined} card */
@@ -355,6 +419,7 @@
       seededShuffle,
       clampDailyNew,
       selectDailyNewWords,
+      resizeDailyNewWordKeys,
       serializeFsrsCard,
       deserializeFsrsCard,
       intervalLabel,
