@@ -5,7 +5,6 @@ module.exports = [
   {
     ignores: [
       "node_modules/**",
-      "design-concepts/**",
       "dist/**",
       "wordbooks/**",
       "vocabulary-flashcards.html",

@@ -185,11 +185,9 @@ npm run perf:check
 ├─ package.json                 # 构建、测试脚本和固定依赖
 ├─ package-lock.json            # npm 锁文件
 ├─ tests/                       # 单元、IndexedDB 集成与浏览器 E2E 测试
-├─ wordbooks/
-│  ├─ *-vocabulary.html         # 7 套内置词书源文件
-│  └─ my/                       # 可选私人词书目录，默认构建忽略
-└─ design-concepts/
-   └─ childlike-ui/             # 童趣主题的设计参考和截图
+└─ wordbooks/
+   ├─ *-vocabulary.html         # 7 套内置词书源文件
+   └─ my/                       # 可选私人词书目录，默认构建忽略
 ```
 
 模块职责与状态所有权见 [`docs/architecture.md`](./docs/architecture.md)，完整发布和回滚步骤见 [`docs/release-and-rollback.md`](./docs/release-and-rollback.md)。
