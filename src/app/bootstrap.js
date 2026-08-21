@@ -8,6 +8,7 @@
     const IMPORT_WORKER_SOURCE = __BUILD_IMPORT_WORKER_SOURCE__;
     const IMPORT_WORKER_URL = __BUILD_IMPORT_WORKER_URL__;
     const BOOKS_MANIFEST_URL = __BUILD_BOOKS_MANIFEST_URL__;
+    const offlineWordbookNodes = new Map(Array.from(document.querySelectorAll('script[type="application/json"][data-wordbook-id]')).map((node) => [node.dataset.wordbookId, node]));
     const vocabularyStorageKey = 'random-vocabulary:last-import:v1';
     const studySizeStorageKey = 'random-vocabulary:study-size:v1';
     const studySizePreferencesStorageKey = 'random-vocabulary:study-sizes:v2';
@@ -149,6 +150,23 @@
       const book = BUILT_IN_BOOKS.find((entry) => entry.id === bookId);
       if (!book) return null;
       if (Array.isArray(book.words)) return book;
+      if (APP_BUILD_TARGET === 'offline') {
+        const node = offlineWordbookNodes.get(book.id);
+        if (!node) throw new Error('离线词库数据缺失，请重新下载单文件版本。');
+        let payload;
+        try {
+          payload = JSON.parse(node.textContent || '');
+        } catch {
+          throw new Error('离线词库数据损坏，请重新下载单文件版本。');
+        }
+        if (!payload || payload.formatVersion !== 1 || payload.id !== book.id || !Array.isArray(payload.words)) throw new Error('离线词库数据格式不兼容。');
+        const words = payload.words.map(normalizeStoredWord).filter(Boolean);
+        if (words.length !== book.wordCount) throw new Error('离线词库词条数量校验失败。');
+        book.words = words;
+        offlineWordbookNodes.delete(book.id);
+        node.remove();
+        return book;
+      }
       if (!book.url || APP_BUILD_TARGET !== 'web') throw new Error('词库数据不可用，请重新构建应用。');
       let response;
       try {

@@ -236,14 +236,34 @@ function buildWordbooks({
       url: `./data/books/${artifact.jsonFileName}`,
     };
   });
+  const offlineBuiltInBooks = builtInBooks.map((book) => ({
+    id: book.id,
+    name: book.name,
+    fileName: book.fileName,
+    words: null,
+    wordCount: book.words.length,
+    schemaVersion: 1,
+  }));
+  const offlineDataBlocks = builtInBooks
+    .map((book) => {
+      const payload = JSON.stringify({
+        formatVersion: 1,
+        id: book.id,
+        name: book.name,
+        words: book.words,
+      }).replace(/</g, "\\u003c");
+      return `<script type="application/json" data-wordbook-id="${book.id}">${payload}</script>`;
+    })
+    .join("\n  ");
   return {
     builtInBooks,
     personalBooks,
     bookArtifacts,
     manifestJson,
+    offlineDataBlocks,
     defaultBuiltInBook,
     offlineDefine: {
-      BUILT_IN_BOOKS: escapeInlineJson(builtInBooks),
+      BUILT_IN_BOOKS: escapeInlineJson(offlineBuiltInBooks),
       PERSONAL_BOOKS: escapeInlineJson(personalBooks),
       DEFAULT_BOOK_ID: JSON.stringify(defaultBuiltInBook.id),
       LEGACY_BUILT_IN_BOOK_IDS: JSON.stringify(legacyBuiltInBookIds),

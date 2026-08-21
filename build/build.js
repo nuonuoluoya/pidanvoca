@@ -109,12 +109,13 @@ const template = fs.readFileSync(
   "utf8",
 );
 
-function renderPage({ target, style, script }) {
+function renderPage({ target, style, script, wordbookData = "" }) {
   return renderTemplate(
     template,
     {
       APP_STYLE: style,
       APP_SCRIPT: script,
+      WORDBOOK_DATA: wordbookData,
       PERSONAL_BOOK_COUNT: wordbooks.personalBooks.length,
       BUILD_TARGET: target,
     },
@@ -132,6 +133,7 @@ const offlineHtml = withSecurityPolicy(
     target: "offline",
     style: `<style>\n${offlineStylesheet}  </style>`,
     script: `<script>${offlineBundle}</script>`,
+    wordbookData: wordbooks.offlineDataBlocks,
   }),
 );
 const webHtml = withSecurityPolicy(

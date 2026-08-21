@@ -112,10 +112,27 @@ test("双构建分别生成按需在线壳与自包含离线文件", () => {
   assert.match(webHtml, /window\.location\.protocol === 'file:'/);
   assert.match(webHtml, /\.\.\/offline\/vocabulary-flashcards\.html/);
   assert.match(offlineHtml, /<!-- Build target: offline -->/);
-  assert.doesNotMatch(offlineHtml, /(?:"words"|words):null/);
+  assert.match(offlineHtml, /(?:"words"|words):null/);
+  assert.equal(
+    (
+      offlineHtml.match(
+        /<script type="application\/json" data-wordbook-id=/g,
+      ) || []
+    ).length,
+    7,
+  );
+  assert.match(
+    offlineHtml,
+    /<script type="application\/json" data-wordbook-id="cet-4-vocabulary\.html">\{"formatVersion":1/,
+  );
   [webHtml, offlineHtml].forEach((html) => {
     assert.match(html, /<!-- Personal wordbooks included: 0 -->/);
-    assert.ok((html.match(/<script(?:\s[^>]*)?>/gi) || []).length <= 3);
+    assert.ok(
+      (
+        html.match(/<script(?![^>]*type="application\/json")(?:\s[^>]*)?>/gi) ||
+        []
+      ).length <= 3,
+    );
   });
 });
 
