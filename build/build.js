@@ -188,6 +188,24 @@ const settingsControllerPath = path.join(
   "settings",
   "controller.js",
 );
+const settingsViewPath = path.join(
+  projectRoot,
+  "src",
+  "views",
+  "settings-view.js",
+);
+const wordbookViewPath = path.join(
+  projectRoot,
+  "src",
+  "views",
+  "wordbook-view.js",
+);
+const completionViewPath = path.join(
+  projectRoot,
+  "src",
+  "views",
+  "completion-view.js",
+);
 const appEventsPath = path.join(projectRoot, "src", "app", "events.js");
 const importProcessorPath = path.join(
   projectRoot,
@@ -548,6 +566,18 @@ const embeddedSettingsController = fs
   .readFileSync(settingsControllerPath, "utf8")
   .replace(/[ \t]+$/gm, "")
   .replace(/<\/script/gi, "<\\/script");
+const embeddedSettingsView = fs
+  .readFileSync(settingsViewPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedWordbookView = fs
+  .readFileSync(wordbookViewPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
+const embeddedCompletionView = fs
+  .readFileSync(completionViewPath, "utf8")
+  .replace(/[ \t]+$/gm, "")
+  .replace(/<\/script/gi, "<\\/script");
 const embeddedAppEvents = fs
   .readFileSync(appEventsPath, "utf8")
   .replace(/[ \t]+$/gm, "")
@@ -617,6 +647,9 @@ const output = renderTemplate(
     EMBEDDED_WORDBOOK_REPOSITORY: embeddedWordbookRepository,
     EMBEDDED_SETTINGS_REPOSITORY: embeddedSettingsRepository,
     EMBEDDED_SETTINGS_CONTROLLER: embeddedSettingsController,
+    EMBEDDED_SETTINGS_VIEW: embeddedSettingsView,
+    EMBEDDED_WORDBOOK_VIEW: embeddedWordbookView,
+    EMBEDDED_COMPLETION_VIEW: embeddedCompletionView,
     EMBEDDED_APP_EVENTS: embeddedAppEvents,
     EMBEDDED_IMPORT_PROCESSOR: embeddedImportProcessor,
     EMBEDDED_FSRS_BUNDLE: `/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}`,

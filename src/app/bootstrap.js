@@ -61,8 +61,6 @@
     const settingsController = new window.PidanvocaSettings.SettingsController({
       theme: document.documentElement.dataset.theme
     });
-    let settingsShadowFallbackTimer = 0;
-
     function normalizeStudySize(value) {
       return window.PidanvocaStorage.normalizeStudySize(value, defaultStudySize);
     }
@@ -441,7 +439,6 @@
     let activeImportWorker = null;
     let activeImportTaskId = null;
     let spellingAdvanceTimer = 0;
-    let studyCompleteTimer = 0;
     let memoryDailyNew = memoryCore.defaultDailyNew;
     let memoryStorageAvailable = true;
     let memoryVolatileConsent = false;
@@ -471,6 +468,35 @@
       const mobileClassicLayout = window.matchMedia('(max-width: 700px)');
       const stackedCardPointer = window.matchMedia('(min-width: 701px) and (hover: hover) and (pointer: fine)');
       let classicSwipeGesture = null;
+      const settingsView = new window.PidanvocaViews.SettingsView({
+        window,
+        document,
+        app,
+        button: settingsButton,
+        drawer: settingsDrawer,
+        themeButton,
+        themeMeta: themeColorMeta
+      });
+      const wordbookView = new window.PidanvocaViews.WordbookView({
+        document,
+        button: wordbookButton,
+        panel: wordbookPanel,
+        builtInList: builtInWordbookList,
+        customSection: customWordbookSection,
+        customList: customWordbookList,
+        studySizePanel,
+        deleteButton: studySizeDelete,
+        reducedMotion
+      });
+      const completionView = new window.PidanvocaViews.CompletionView({
+        window,
+        backdrop: studyCompleteBackdrop,
+        title: studyCompleteTitle,
+        score: studyCompleteScore,
+        detail: studyCompleteDetail,
+        continueButton: studyCompleteContinue,
+        adjustButton: studyCompleteAdjust
+      });
 
     function activeStudyBookKey() {
       return wordbookController.activeBookKey();
@@ -2134,12 +2160,8 @@
     }
 
     function closeStudyComplete(restoreFocus = false) {
-      window.clearTimeout(studyCompleteTimer);
       isStudyCompleteOpen = false;
-      studyCompleteBackdrop.classList.remove('is-visible');
-      studyCompleteTimer = window.setTimeout(() => {
-        if (!isStudyCompleteOpen) studyCompleteBackdrop.hidden = true;
-      }, 230);
+      completionView.hide();
       if (restoreFocus) nextButton.focus();
       syncChrome();
     }
@@ -2152,19 +2174,16 @@
       const isRoundComplete = remaining === 0;
       const nextGroupTotal = studySize === Infinity ? remaining : Math.min(studySize, remaining);
 
-      window.clearTimeout(studyCompleteTimer);
       setSettingsOpen(false);
-      studyCompleteTitle.textContent = isRoundComplete ? '这一轮，收下了' : '这一组，收下了';
-      studyCompleteScore.textContent = groupTotal + ' / ' + groupTotal;
-      studyCompleteDetail.textContent = isRoundComplete
-        ? '已完成本词本的 ' + deck.length + ' 个单词，可以重新随机开始。'
-        : '词本中还有 ' + remaining + ' 个单词未出现。';
-      studyCompleteContinue.textContent = isRoundComplete ? '随机开始新一轮' : '再来 ' + nextGroupTotal + ' 词';
-      studyCompleteBackdrop.hidden = false;
       isStudyCompleteOpen = true;
-      window.requestAnimationFrame(() => studyCompleteBackdrop.classList.add('is-visible'));
+      completionView.show({
+        isRoundComplete,
+        groupTotal,
+        remaining,
+        deckTotal: deck.length,
+        nextGroupTotal
+      });
       syncChrome();
-      window.setTimeout(() => studyCompleteContinue.focus(), 80);
     }
 
     function continueAfterStudyComplete() {
@@ -2393,10 +2412,7 @@
 
     function syncThemeButton() {
       const isPlayful = document.documentElement.dataset.theme === 'playful';
-      themeButton.setAttribute('aria-pressed', String(isPlayful));
-      themeButton.setAttribute('aria-label', isPlayful ? '恢复经典主题' : '启用童趣主题');
-      themeButton.title = isPlayful ? '恢复经典主题' : '启用童趣主题';
-      if (themeColorMeta) themeColorMeta.content = isPlayful ? '#78c7ed' : '#edf4fc';
+      settingsView.renderTheme(isPlayful);
     }
 
     function setTheme(theme) {
@@ -2410,44 +2426,20 @@
     function setSettingsOpen(isOpen) {
       const wasOpen = settingsController.state.settingsOpen;
       isOpen = settingsController.setSettingsOpen(isOpen);
-      window.clearTimeout(settingsShadowFallbackTimer);
-      settingsShadowFallbackTimer = 0;
-      if (isOpen) {
-        document.body.classList.remove('settings-closing');
-      } else if (wasOpen) {
-        document.body.classList.add('settings-closing');
-        settingsShadowFallbackTimer = window.setTimeout(releaseSettingsShadow, 900);
-      }
-      document.body.classList.toggle('settings-open', isOpen);
-      settingsButton.setAttribute('aria-expanded', String(isOpen));
-      settingsButton.setAttribute('aria-label', isOpen ? '关闭设置' : '打开设置');
-      settingsButton.title = isOpen ? '关闭设置' : '打开设置';
-      settingsDrawer.setAttribute('aria-hidden', String(!isOpen));
-      settingsDrawer.inert = !isOpen;
-    }
-
-    function releaseSettingsShadow() {
-      window.clearTimeout(settingsShadowFallbackTimer);
-      settingsShadowFallbackTimer = 0;
-      document.body.classList.remove('settings-closing');
+      settingsView.renderOpen(isOpen, wasOpen);
     }
 
     function handleSettingsPageTransitionEnd(event) {
-      if (event.target !== app || event.propertyName !== 'transform' || settingsController.state.settingsOpen) return;
-      releaseSettingsShadow();
+      settingsView.handlePageTransitionEnd(event, settingsController.state.settingsOpen);
     }
 
     function setWordbookPanelOpen(isOpen) {
       isOpen = settingsController.setWordbookOpen(isOpen);
-      wordbookButton.setAttribute('aria-expanded', String(isOpen));
-      wordbookButton.setAttribute('aria-label', isOpen ? '隐藏单词本列表' : '显示单词本列表');
-      wordbookPanel.hidden = !isOpen;
+      wordbookView.renderOpen(isOpen);
     }
 
     function scrollExpandedStudyBook() {
-      if (!expandedStudyBookId) return;
-      const stack = document.querySelector('.wordbook-option-stack[data-book-id="' + CSS.escape(expandedStudyBookId) + '"]');
-      if (stack) stack.scrollIntoView({ block: 'nearest', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+      wordbookView.scrollExpanded(expandedStudyBookId);
     }
 
     function setExpandedStudyBook(bookId, isOpen) {
@@ -2467,73 +2459,15 @@
       setStudySizePreference(studySizeInput.value);
     }
 
-    function createWordbookOption(book, source, isActive) {
-      const button = document.createElement('button');
-      button.className = 'wordbook-option';
-      button.type = 'button';
-      button.dataset.bookId = book.id;
-      button.dataset.bookSource = source;
-      button.setAttribute('aria-pressed', String(isActive));
-      button.setAttribute('aria-expanded', String(isActive && expandedStudyBookId === book.id));
-      button.setAttribute('aria-controls', 'studySizePanel');
-      button.setAttribute('aria-label', (isActive ? '当前单词本 ' : '使用单词本 ') + book.name + '，共 ' + bookWordCount(book) + ' 个词条' + (isActive ? '；点击设置每组数量' : ''));
-
-      const name = document.createElement('span');
-      name.className = 'wordbook-option__name';
-      name.textContent = book.name;
-
-      const count = document.createElement('span');
-      count.className = 'wordbook-option__count';
-      count.textContent = bookWordCount(book) + ' 词';
-
-      const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      chevron.classList.add('wordbook-option__chevron');
-      chevron.setAttribute('viewBox', '0 0 24 24');
-      chevron.setAttribute('aria-hidden', 'true');
-      chevron.innerHTML = '<path d="m9 6 6 6-6 6"></path>';
-
-      button.append(name, count, chevron);
-      return button;
-    }
-
-    function createWordbookOptionStack(book, source, isActive) {
-      const stack = document.createElement('div');
-      stack.className = 'wordbook-option-stack';
-      stack.dataset.bookId = book.id;
-      stack.append(createWordbookOption(book, source, isActive));
-
-      if (isActive && expandedStudyBookId === book.id) {
-        const canDelete = source === 'custom';
-        studySizeDelete.hidden = !canDelete;
-        studySizeDelete.dataset.deleteBookId = canDelete ? book.id : '';
-        studySizeDelete.setAttribute('aria-label', canDelete ? '删除单词本 ' + book.name : '删除当前单词本');
-        studySizeDelete.title = canDelete ? '删除“' + book.name + '”' : '';
-        studySizePanel.hidden = false;
-        stack.append(studySizePanel);
-      }
-      return stack;
-    }
-
     function renderWordbookLists() {
-      studySizePanel.hidden = true;
-      studySizeDelete.hidden = true;
-      studySizeDelete.dataset.deleteBookId = '';
-      const builtInFragment = document.createDocumentFragment();
-      BUILT_IN_BOOKS.forEach((book) => {
-        builtInFragment.append(createWordbookOptionStack(book, 'built-in', book.id === activeBuiltInBookId));
+      const model = window.PidanvocaViews.createWordbookPresentation({
+        builtInBooks: BUILT_IN_BOOKS,
+        customBooks,
+        activeBuiltInBookId,
+        activeCustomBookId,
+        combinedWords: WORDS
       });
-      builtInWordbookList.replaceChildren(builtInFragment);
-
-      const customFragment = document.createDocumentFragment();
-      const hasCombinedImport = !activeBuiltInBookId && !activeCustomBookId && WORDS.length > 0;
-      if (hasCombinedImport) {
-        customFragment.append(createWordbookOptionStack({ id: 'combined-import', name: '合并生词本', words: WORDS }, 'combined', true));
-      }
-      customBooks.forEach((book) => {
-        customFragment.append(createWordbookOptionStack(book, 'custom', book.id === activeCustomBookId));
-      });
-      customWordbookList.replaceChildren(customFragment);
-      customWordbookSection.hidden = customBooks.length === 0 && !hasCombinedImport;
+      wordbookView.render(model, expandedStudyBookId, bookWordCount);
     }
 
     async function selectBuiltInBook(bookId) {
@@ -2824,13 +2758,7 @@
         return;
       }
       if (isStudyCompleteOpen && event.key === 'Tab') {
-        const dialogButtons = [studyCompleteContinue, studyCompleteAdjust];
-        const currentIndex = dialogButtons.indexOf(document.activeElement);
-        const nextIndex = event.shiftKey
-          ? (currentIndex <= 0 ? dialogButtons.length - 1 : currentIndex - 1)
-          : (currentIndex >= dialogButtons.length - 1 ? 0 : currentIndex + 1);
-        event.preventDefault();
-        dialogButtons[nextIndex].focus();
+        completionView.trapTab(event, document.activeElement);
         return;
       }
       if (event.key === 'Escape' && isStudyCompleteOpen) {
