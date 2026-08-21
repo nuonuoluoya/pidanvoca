@@ -37,4 +37,22 @@ module.exports = [
       ],
     },
   },
+  {
+    files: ["src/app/bootstrap.js"],
+    languageOptions: {
+      globals: {
+        __BUILD_APP_BUILD_TARGET__: "readonly",
+        __BUILD_BUILT_IN_BOOKS__: "readonly",
+        __BUILD_PERSONAL_BOOKS__: "readonly",
+        __BUILD_DEFAULT_BOOK_ID__: "readonly",
+        __BUILD_LEGACY_BUILT_IN_BOOK_IDS__: "readonly",
+        __BUILD_IMPORT_WORKER_SOURCE__: "readonly",
+        __BUILD_FSRS_PACKAGE_VERSION__: "readonly",
+      },
+    },
+    rules: {
+      "no-undef": "off",
+      "no-unused-vars": "off",
+    },
+  },
 ];

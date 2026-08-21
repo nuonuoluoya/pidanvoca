@@ -26,6 +26,7 @@ const buildEntryPath = path.join(projectRoot, "build-vocabulary.js");
 const buildImplementationPath = path.join(projectRoot, "build", "build.js");
 const appTemplatePath = path.join(projectRoot, "src", "templates", "app.html");
 const appStylesheetPath = path.join(projectRoot, "src", "styles", "app.css");
+const appRuntimePath = path.join(projectRoot, "src", "app", "bootstrap.js");
 const performanceBudgets = require("../performance-budgets.json");
 
 test("兼容构建入口委托给拆分后的构建器与源码模板", () => {
@@ -36,14 +37,19 @@ test("兼容构建入口委托给拆分后的构建器与源码模板", () => {
   const implementation = fs.readFileSync(buildImplementationPath, "utf8");
   const template = fs.readFileSync(appTemplatePath, "utf8");
   const stylesheet = fs.readFileSync(appStylesheetPath, "utf8");
+  const runtime = fs.readFileSync(appRuntimePath, "utf8");
   assert.doesNotMatch(implementation, /<!doctype html>/i);
   assert.doesNotMatch(implementation, /\.deck-card\s*\{/);
   assert.match(template, /^<!doctype html>/i);
   assert.match(template, /\{\{APP_CSS\}\}/);
+  assert.match(template, /\{\{APP_RUNTIME\}\}/);
   assert.match(template, /id="cardLayer"/);
   assert.match(template, /id="memoryCard"/);
   assert.match(stylesheet, /\.deck-card\s*\{/);
   assert.match(stylesheet, /\{\{PLAYFUL_CLOUD_LEFT_DATA_URI\}\}/);
+  assert.doesNotMatch(template, /registerOnlineServiceWorker/);
+  assert.match(runtime, /const APP_BUILD_TARGET = __BUILD_APP_BUILD_TARGET__/);
+  assert.match(runtime, /registerOnlineServiceWorker/);
 });
 
 test("生成页面带有禁止直接编辑的构建标记", () => {

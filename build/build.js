@@ -3,6 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { parseWordbook } = require("../src/features/wordbooks/parser");
 const { renderTemplate } = require("./render-template");
+const { renderRuntime } = require("./render-runtime");
 const { withSecurityPolicy } = require("./csp");
 const { createWebServiceWorker } = require("./service-worker");
 const { writeArtifacts } = require("./write-artifacts");
@@ -17,6 +18,7 @@ const dataPath = path.join(projectRoot, "data");
 const dataBooksPath = path.join(dataPath, "books");
 const appTemplatePath = path.join(projectRoot, "src", "templates", "app.html");
 const appStylesheetPath = path.join(projectRoot, "src", "styles", "app.css");
+const appRuntimePath = path.join(projectRoot, "src", "app", "bootstrap.js");
 const playfulCloudLeftPath = path.join(
   projectRoot,
   "assets",
@@ -579,10 +581,23 @@ const renderedAppCss = renderTemplate(
   },
   "application stylesheet",
 );
+const renderedAppRuntime = renderRuntime(
+  fs.readFileSync(appRuntimePath, "utf8"),
+  {
+    APP_BUILD_TARGET: "'offline'",
+    BUILT_IN_BOOKS: embeddedBuiltInBooks,
+    PERSONAL_BOOKS: embeddedPersonalBooks,
+    DEFAULT_BOOK_ID: embeddedDefaultBookId,
+    LEGACY_BUILT_IN_BOOK_IDS: embeddedLegacyBuiltInBookIds,
+    IMPORT_WORKER_SOURCE: embeddedImportWorkerSource,
+    FSRS_PACKAGE_VERSION: embeddedFsrsPackageVersion,
+  },
+);
 const output = renderTemplate(
   fs.readFileSync(appTemplatePath, "utf8"),
   {
     APP_CSS: renderedAppCss,
+    APP_RUNTIME: renderedAppRuntime,
     EMBEDDED_MEMORY_CORE: embeddedMemoryCore,
     EMBEDDED_ANIMATION_COORDINATOR: embeddedAnimationCoordinator,
     EMBEDDED_ANIMATION_GEOMETRY: embeddedAnimationGeometry,
@@ -605,13 +620,6 @@ const output = renderTemplate(
     EMBEDDED_APP_EVENTS: embeddedAppEvents,
     EMBEDDED_IMPORT_PROCESSOR: embeddedImportProcessor,
     EMBEDDED_FSRS_BUNDLE: `/* ts-fsrs ${fsrsPackageVersion}, MIT License */\n${embeddedFsrsBundle}`,
-    APP_BUILD_TARGET: "offline",
-    BUILT_IN_BOOKS: embeddedBuiltInBooks,
-    PERSONAL_BOOKS: embeddedPersonalBooks,
-    DEFAULT_BOOK_ID: embeddedDefaultBookId,
-    LEGACY_BUILT_IN_BOOK_IDS: embeddedLegacyBuiltInBookIds,
-    IMPORT_WORKER_SOURCE: embeddedImportWorkerSource,
-    FSRS_PACKAGE_VERSION: embeddedFsrsPackageVersion,
   },
   "application template",
 );
