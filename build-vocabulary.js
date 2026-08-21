@@ -1319,6 +1319,10 @@ const output = `<!doctype html>
     .memory-backdrop.is-visible .memory-panel { transform: translateY(0) scale(1); }
     .memory-backdrop.is-transitioning > .memory-panel:not(.memory-panel--flight) { pointer-events: none; }
 
+    .memory-panel.is-transition-reset {
+      transition: none !important;
+    }
+
     .memory-panel.is-good-blocked {
       animation: memory-good-blocked 420ms cubic-bezier(0.22, 0.75, 0.28, 1);
     }
@@ -4097,13 +4101,17 @@ const output = `<!doctype html>
         });
       } finally {
         memoryPanel.style.visibility = 'hidden';
+        memoryPanel.classList.add('is-transition-reset');
         memoryPanel.classList.remove('memory-panel--flight', 'is-flying-out');
         clearExitPoint(memoryPanel);
         renderMemoryCard(false);
         finishMemoryStackAdvance(stackAdvance);
         memoryBackdrop.classList.remove('is-transitioning', 'is-card-advancing');
         incomingPanel.remove();
+        void memoryPanel.offsetWidth;
         memoryPanel.style.removeProperty('visibility');
+        void memoryPanel.offsetWidth;
+        memoryPanel.classList.remove('is-transition-reset');
         if (transition.isActive()) transition.finish();
       }
       focusMemorySurface();
@@ -4153,7 +4161,8 @@ const output = `<!doctype html>
         'memory-panel--flight',
         'memory-panel--incoming',
         'memory-panel--returning',
-        'is-flying-out'
+        'is-flying-out',
+        'is-transition-reset'
       );
       memoryPanel.style.removeProperty('visibility');
       clearExitPoint(memoryPanel);
@@ -4240,7 +4249,7 @@ const output = `<!doctype html>
       memoryBackdrop.querySelectorAll('.memory-panel--flight, .memory-panel--incoming, .memory-panel--yielding').forEach((panel) => {
         if (panel !== memoryPanel) panel.remove();
       });
-      memoryPanel.classList.remove('memory-panel--flight', 'memory-panel--incoming', 'memory-panel--returning', 'is-flying-out');
+      memoryPanel.classList.remove('memory-panel--flight', 'memory-panel--incoming', 'memory-panel--returning', 'is-flying-out', 'is-transition-reset');
       memoryPanel.style.removeProperty('visibility');
       clearExitPoint(memoryPanel);
       cardLayer.classList.remove('is-transitioning', 'is-memory-returning', 'is-memory-advancing');

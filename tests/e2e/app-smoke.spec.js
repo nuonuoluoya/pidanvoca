@@ -294,6 +294,19 @@ test("记忆模式点击后方叠卡等同 Good 并保留前进动画", async ({
   await page.locator("#memoryButton").click();
   await expect(page.locator("#memoryGoodButton")).toBeEnabled();
   const initialWord = await page.locator("#memoryCardWord").textContent();
+  const stablePanel = page.locator("#memoryBackdrop > .memory-panel").first();
+  await expect(stablePanel).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+  await stablePanel.evaluate((panel) => {
+    panel.dataset.e2eFlightStarts = "0";
+    panel.dataset.e2eReturnStarts = "0";
+    panel.addEventListener("transitionstart", (event) => {
+      if (event.propertyName !== "transform") return;
+      const key = panel.classList.contains("memory-panel--flight")
+        ? "e2eFlightStarts"
+        : "e2eReturnStarts";
+      panel.dataset[key] = String(Number(panel.dataset[key] || "0") + 1);
+    });
+  });
   const stackedCard = page.locator('.deck-card[data-offset="1"]');
   await stackedCard.evaluate((card) => card.click());
 
@@ -306,6 +319,13 @@ test("记忆模式点击后方叠卡等同 Good 并保留前进动画", async ({
     "data-animation-state",
     "idle",
   );
+  await page.waitForTimeout(80);
+  expect(
+    await stablePanel.evaluate((panel) => ({
+      flight: Number(panel.dataset.e2eFlightStarts || "0"),
+      returning: Number(panel.dataset.e2eReturnStarts || "0"),
+    })),
+  ).toEqual({ flight: 1, returning: 0 });
   await expect(page.locator("#memoryCardWord")).not.toHaveText(initialWord);
 });
 
@@ -370,10 +390,20 @@ test("记忆模式由真实主面板飞出且后方卡片独立进入", async ({
   await page.locator("#memoryButton").click();
   await expect(page.locator("#memoryGoodButton")).toBeEnabled();
   const stablePanel = page.locator("#memoryBackdrop > .memory-panel").first();
+  await expect(stablePanel).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
   const stableBox = await stablePanel.boundingBox();
   const initialWord = await page.locator("#memoryCardWord").textContent();
   await stablePanel.evaluate((panel) => {
     panel.dataset.e2eStablePanel = "true";
+    panel.dataset.e2eFlightStarts = "0";
+    panel.dataset.e2eReturnStarts = "0";
+    panel.addEventListener("transitionstart", (event) => {
+      if (event.propertyName !== "transform") return;
+      const key = panel.classList.contains("memory-panel--flight")
+        ? "e2eFlightStarts"
+        : "e2eReturnStarts";
+      panel.dataset[key] = String(Number(panel.dataset[key] || "0") + 1);
+    });
   });
 
   await page.locator("#memoryGoodButton").click();
@@ -434,6 +464,13 @@ test("记忆模式由真实主面板飞出且后方卡片独立进入", async ({
     "data-animation-state",
     "idle",
   );
+  await page.waitForTimeout(80);
+  expect(
+    await stablePanel.evaluate((panel) => ({
+      flight: Number(panel.dataset.e2eFlightStarts || "0"),
+      returning: Number(panel.dataset.e2eReturnStarts || "0"),
+    })),
+  ).toEqual({ flight: 1, returning: 0 });
   await expect(page.locator("#memoryCardWord")).toHaveText(frame.incomingWord);
 });
 
