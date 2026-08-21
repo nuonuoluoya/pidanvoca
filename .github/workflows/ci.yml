@@ -39,6 +39,9 @@ jobs:
       - name: Check JavaScript types
         run: npm run typecheck
 
+      - name: Build release artifacts
+        run: npm run build
+
       - name: Run tests
         run: npm test
 
@@ -47,9 +50,6 @@ jobs:
 
       - name: Run browser tests
         run: npm run test:e2e
-
-      - name: Rebuild generated application
-        run: npm run build
 
       - name: Verify deterministic build and private wordbook exclusion
         run: npm run build:deterministic

@@ -21,7 +21,7 @@
     "metrics:refactor": "node scripts/refactoring-metrics.js",
     "perf:check": "node scripts/performance-budget.js",
     "release:check": "npm run check && npm run build:deterministic && npm run perf:check && npm run test:e2e && npm run ci:generated",
-    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run build && npm test",
     "ci:generated": "npm run build:deterministic"
   },
   "dependencies": {
