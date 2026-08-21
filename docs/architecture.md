@@ -34,10 +34,10 @@ corrupted
 
 ## 构建产物
 
-- `dist/web/index.html`：在线壳，仅内嵌默认词书；其他内置词书从 `data/books.manifest.json` 按需加载。
+- `dist/web/index.html`：在线壳；全部内置词书从 `dist/web/data/books.manifest.json` 按需加载。
 - `dist/web/service-worker.js`：以内容 hash 版本化缓存，不在学习中途强制激活。
 - `dist/offline/vocabulary-flashcards.html`：包含全部源码、依赖和内置词书的单文件离线版。
-- `vocabulary-flashcards.html`：与离线产物相同的兼容下载入口。
+- `dist/pages/`：CI 构建的 GitHub Pages Artifact，包含在线站点和 `downloads/` 离线下载。
 
 在线和离线产物共享全部业务源码。构建为脚本与样式生成 SHA-256 CSP 白名单，词书 JSON 中的 `<` 会被转义。
 

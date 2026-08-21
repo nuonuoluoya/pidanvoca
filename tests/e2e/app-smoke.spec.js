@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
   });
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
   page.runtimeErrors = runtimeErrors;
-  await page.goto("/vocabulary-flashcards.html");
+  await page.goto("/dist/offline/vocabulary-flashcards.html");
   await expect(
     page.locator('.deck-card[data-offset="0"] .card-word'),
   ).toBeVisible();

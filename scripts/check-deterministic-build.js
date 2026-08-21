@@ -4,7 +4,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const projectRoot = path.join(__dirname, "..");
-const generatedRoots = ["vocabulary-flashcards.html", "data", "dist"];
+const generatedRoots = ["dist"];
 
 function listFiles(relativePath) {
   const absolutePath = path.join(projectRoot, relativePath);
@@ -47,9 +47,10 @@ function build() {
 
 function assertPersonalWordbooksExcluded() {
   const generatedHtmlPaths = [
-    "vocabulary-flashcards.html",
     path.join("dist", "offline", "vocabulary-flashcards.html"),
     path.join("dist", "web", "index.html"),
+    path.join("dist", "pages", "index.html"),
+    path.join("dist", "pages", "downloads", "vocabulary-flashcards.html"),
   ];
   const generatedHtml = generatedHtmlPaths.map((relativePath) =>
     fs.readFileSync(path.join(projectRoot, relativePath), "utf8"),
@@ -77,9 +78,14 @@ function assertPersonalWordbooksExcluded() {
         payload.sourceFileName,
       ].filter((value) => typeof value === "string" && value.length >= 6);
     });
+  const generatedContent = generatedRoots
+    .flatMap(listFiles)
+    .map((relativePath) =>
+      fs.readFileSync(path.join(projectRoot, relativePath)).toString("utf8"),
+    );
   if (
     privateMarkers.some((marker) =>
-      generatedHtml.some((html) => html.includes(marker)),
+      generatedContent.some((content) => content.includes(marker)),
     )
   ) {
     throw new Error("Default build leaked a personal wordbook marker");

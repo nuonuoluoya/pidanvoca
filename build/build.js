@@ -13,9 +13,6 @@ const { hashedAsset } = require("./output-assets");
 const projectRoot = path.join(__dirname, "..");
 const wordbooksPath = path.join(projectRoot, "wordbooks");
 const personalWordbooksPath = path.join(wordbooksPath, "my");
-const dataPath = path.join(projectRoot, "data");
-const dataBooksPath = path.join(dataPath, "books");
-const rootOfflinePath = path.join(projectRoot, "vocabulary-flashcards.html");
 const offlinePath = path.join(
   projectRoot,
   "dist",
@@ -33,6 +30,7 @@ const webAssetsPath = path.join(projectRoot, "dist", "web", "assets");
 const webDataPath = path.join(projectRoot, "dist", "web", "data");
 const webDataBooksPath = path.join(webDataPath, "books");
 const webManifestPath = path.join(webDataPath, "books.manifest.json");
+const pagesPath = path.join(projectRoot, "dist", "pages");
 
 const wordbooks = buildWordbooks({
   wordbooksPath,
@@ -173,10 +171,7 @@ const serviceWorker = createWebServiceWorker({
 
 writeArtifacts({
   bookArtifacts: wordbooks.bookArtifacts,
-  dataBooksPath,
-  manifestPath: path.join(dataPath, "books.manifest.json"),
   manifestJson: wordbooks.manifestJson,
-  rootOfflinePath,
   offlinePath,
   offlineHtml,
   webPath,
@@ -192,6 +187,7 @@ writeArtifacts({
   ],
   webDataBooksPath,
   webManifestPath,
+  pagesPath,
 });
 
 console.log(

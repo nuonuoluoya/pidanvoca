@@ -6,7 +6,6 @@ const projectRoot = path.join(__dirname, "..");
 const artifacts = {
   webHtml: path.join("dist", "web", "index.html"),
   offlineHtml: path.join("dist", "offline", "vocabulary-flashcards.html"),
-  rootOfflineHtml: "vocabulary-flashcards.html",
 };
 
 function compressedSizes(content) {

@@ -6,14 +6,14 @@
     <meta name="referrer" content="no-referrer" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'sha256-Kp9Mll0KDcppDgyZoConzR46K85wXxwl632HsaBwayw='; script-src-attr 'none'; style-src 'none'; img-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'self'; script-src 'sha256-DthV4+sOZ8hYBYWOKLZ+/8tv/OYY6OHmBId3tvXNAkk='; script-src-attr 'none'; style-src 'none'; img-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta http-equiv="refresh" content="1; url=./dist/web/index.html" />
     <title>随机单词本</title>
     <script>
       const target =
         window.location.protocol === "file:"
-          ? "./vocabulary-flashcards.html"
+          ? "./dist/offline/vocabulary-flashcards.html"
           : "./dist/web/index.html";
       window.location.replace(
         target + window.location.search + window.location.hash,
@@ -23,7 +23,7 @@
   <body>
     <p>
       正在打开<a href="./dist/web/index.html">在线版</a>；直接下载使用请打开<a
-        href="./vocabulary-flashcards.html"
+        href="./dist/offline/vocabulary-flashcards.html"
         >离线版</a
       >。
     </p>

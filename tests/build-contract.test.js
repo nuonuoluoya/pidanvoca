@@ -5,7 +5,6 @@ const path = require("node:path");
 const test = require("node:test");
 
 const projectRoot = path.join(__dirname, "..");
-const generatedHtmlPath = path.join(projectRoot, "vocabulary-flashcards.html");
 const webHtmlPath = path.join(projectRoot, "dist", "web", "index.html");
 const offlineHtmlPath = path.join(
   projectRoot,
@@ -13,7 +12,14 @@ const offlineHtmlPath = path.join(
   "offline",
   "vocabulary-flashcards.html",
 );
-const manifestPath = path.join(projectRoot, "data", "books.manifest.json");
+const generatedHtmlPath = offlineHtmlPath;
+const manifestPath = path.join(
+  projectRoot,
+  "dist",
+  "web",
+  "data",
+  "books.manifest.json",
+);
 const sourceWordbooksPath = path.join(projectRoot, "wordbooks");
 const serviceWorkerPath = path.join(
   projectRoot,
@@ -30,6 +36,25 @@ const appRuntimePath = path.join(projectRoot, "src", "app", "bootstrap.js");
 const bundleEntryPath = path.join(projectRoot, "src", "app", "bundle-entry.js");
 const packageJson = require("../package.json");
 const performanceBudgets = require("../performance-budgets.json");
+
+test("Pages 使用构建 Artifact 发布且生成目录不进入版本控制", () => {
+  const workflow = fs.readFileSync(
+    path.join(projectRoot, ".github", "workflows", "ci.yml"),
+    "utf8",
+  );
+  const gitignore = fs.readFileSync(
+    path.join(projectRoot, ".gitignore"),
+    "utf8",
+  );
+  assert.match(workflow, /actions\/checkout@v7/);
+  assert.match(workflow, /actions\/setup-node@v7/);
+  assert.match(workflow, /actions\/upload-pages-artifact@v4/);
+  assert.match(workflow, /actions\/deploy-pages@v4/);
+  assert.match(workflow, /path: dist\/pages/);
+  assert.match(gitignore, /^\/dist\/$/m);
+  assert.match(gitignore, /^\/data\/$/m);
+  assert.match(gitignore, /^\/vocabulary-flashcards\.html$/m);
+});
 
 test("兼容构建入口委托给拆分后的构建器与源码模板", () => {
   assert.equal(
@@ -71,10 +96,10 @@ test("入口按协议选择在线或离线版并保留查询参数与哈希", ()
   const html = fs.readFileSync(indexHtmlPath, "utf8");
   assert.match(html, /url=\.\/dist\/web\/index\.html/);
   assert.match(html, /window\.location\.protocol\s*===\s*"file:"/);
-  assert.match(html, /"\.\/vocabulary-flashcards\.html"/);
+  assert.match(html, /"\.\/dist\/offline\/vocabulary-flashcards\.html"/);
   assert.match(html, /window\.location\.search\s*\+\s*window\.location\.hash/);
   assert.match(html, /href="\.\/dist\/web\/index\.html"/);
-  assert.match(html, /href="\.\/vocabulary-flashcards\.html"/);
+  assert.match(html, /href="\.\/dist\/offline\/vocabulary-flashcards\.html"/);
   assert.match(html, /Content-Security-Policy/);
   assert.match(html, /name="referrer" content="no-referrer"/);
   const inlineScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] || "";

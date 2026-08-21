@@ -78,9 +78,9 @@ git clone https://github.com/nuonuoluoya/pidanvoca.git
 cd pidanvoca
 ```
 
-在线版入口是 `index.html`，通过 HTTP/HTTPS 访问时会跳转到 `dist/web/index.html`。它启动时只携带默认词书，切换其他内置词书时根据 manifest 按需加载；Service Worker 按词库内容版本缓存资源，发现新版本时提示刷新但不会打断当前学习。本地开发时应通过静态服务器访问，以便浏览器正常请求 JSON 词库。
+线上站点由 GitHub Actions 从源码构建为 Pages Artifact，根路径直接提供 `dist/web` 的在线应用。它启动时根据 manifest 按需加载默认词书，切换其他内置词书时再加载对应 JSON；Service Worker 按内容版本缓存资源，发现新版本时提示刷新但不会打断当前学习。本地开发时应通过静态服务器访问，以便浏览器正常请求 JSON 词库。
 
-直接双击根目录 `index.html` 时会自动转到离线版。离线使用也可只下载 [`vocabulary-flashcards.html`](./vocabulary-flashcards.html) 或 `dist/offline/vocabulary-flashcards.html`；它们都内嵌页面代码、FSRS 调度器和全部内置词书，可直接通过 `file://` 打开且不依赖 CDN。
+离线使用请下载 **[单文件离线版](https://nuonuoluoya.github.io/pidanvoca/downloads/vocabulary-flashcards.html)**。它内嵌页面代码、FSRS 调度器和全部内置词书，可直接通过 `file://` 打开且不依赖 CDN。本地执行 `npm run build` 后，同一文件位于 `dist/offline/vocabulary-flashcards.html`。
 
 ## 使用方法
 
@@ -164,7 +164,7 @@ npm run perf:check
 - `npm run test:e2e`：在桌面和移动端 Chromium 中验证经典模式、记忆模式、设置、导入、动画、在线按需加载及 `file://` 离线启动。
 - `npm run perf:check`：检查在线/离线产物体积，并以固定数据验证 20,000 词洗牌与 50,000 词导入合并没有明显性能退化；预算记录在 `performance-budgets.json`。
 - `npm run release:check`：在干净工作区运行全部质量、性能、浏览器与生成文件发布门禁。
-- `npm run build`：从同一套源码生成 `dist/web/index.html` 在线壳、`data/books.manifest.json` 与 JSON 词库、`dist/offline/vocabulary-flashcards.html`，并同步根目录离线文件。
+- `npm run build`：从同一套源码生成 `dist/web` 在线应用、`dist/offline/vocabulary-flashcards.html` 单文件离线版，以及供 GitHub Pages 上传的 `dist/pages` Artifact 目录。
 - 默认构建不会读取 `wordbooks/my/`，避免将私人词书写入生成文件。
 - 如确实需要把 `wordbooks/my/` 中的 JSON 词书（也兼容旧 HTML）嵌入构建结果，可在构建进程中设置 `INCLUDE_PERSONAL_WORDBOOKS=1`。生成文件将包含私人数据，提交或分享前请检查内容。
 
@@ -172,19 +172,17 @@ npm run perf:check
 
 ```text
 .
-├─ index.html                    # 入口页，跳转到完整应用
-├─ vocabulary-flashcards.html   # 构建生成的兼容单文件离线应用
-├─ data/
-│  ├─ books.manifest.json       # 稳定 ID、数量、Schema 与内容哈希
-│  └─ books/*.json              # 在线版按需加载的词库
-├─ dist/
-│  ├─ web/index.html            # GitHub Pages 在线应用壳
-│  └─ offline/*.html            # 可下载的自包含离线版
+├─ index.html                    # 本地开发兼容入口
+├─ dist/                         # 本地构建产物，Git 不跟踪
+│  ├─ web/                       # 在线应用、哈希资源与按需词库
+│  ├─ offline/*.html             # 自包含单文件离线版
+│  └─ pages/                     # GitHub Pages Artifact 根目录
 ├─ build-vocabulary.js          # 在线/离线双产物生成器
 ├─ src/                         # 控制器、动画、存储和应用边界模块
 ├─ package.json                 # 构建、测试脚本和固定依赖
 ├─ package-lock.json            # npm 锁文件
 ├─ tests/                       # 单元、IndexedDB 集成与浏览器 E2E 测试
+├─ .github/workflows/ci.yml     # 质量门禁与 Pages Artifact 发布
 └─ wordbooks/
    ├─ *-vocabulary.json         # 7 套内置、带版本号的 JSON 词书源文件
    └─ my/                       # 可选私人词书目录，默认构建忽略
