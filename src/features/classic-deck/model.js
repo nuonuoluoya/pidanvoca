@@ -1,7 +1,7 @@
 (function attachClassicDeckModel(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) {
+  else if (root) {
     /** @type {any} */ (root).PidanvocaClassicDeck = Object.assign(
       {},
       /** @type {any} */ (root).PidanvocaClassicDeck || {},

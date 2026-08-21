@@ -1,7 +1,7 @@
 (function attachWordbookParser(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) {
+  else if (root) {
     root.PidanvocaWordbooks = Object.assign(
       {},
       root.PidanvocaWordbooks || {},

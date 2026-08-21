@@ -5,7 +5,7 @@
       : root.PidanvocaMemoryReview;
   const api = factory(session);
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) {
+  else if (root) {
     root.PidanvocaMemoryReview = Object.assign(
       {},
       root.PidanvocaMemoryReview || {},

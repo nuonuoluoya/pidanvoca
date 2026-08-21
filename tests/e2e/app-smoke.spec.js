@@ -27,6 +27,21 @@ test("应用启动并渲染稳定主卡", async ({ page }) => {
   expect(await page.locator(".deck-card").count()).toBeLessThanOrEqual(
     performanceBudgets.visibleCardDomLimit,
   );
+  const leakedRuntimeNamespaces = await page.evaluate(() =>
+    [
+      "PidanvocaRuntime",
+      "MemoryCurveCore",
+      "PidanvocaAnimations",
+      "PidanvocaWordbooks",
+      "PidanvocaClassicDeck",
+      "PidanvocaMemoryReview",
+      "PidanvocaStorage",
+      "PidanvocaViews",
+      "PidanvocaImport",
+      "FSRS",
+    ].filter((name) => Object.prototype.hasOwnProperty.call(window, name)),
+  );
+  expect(leakedRuntimeNamespaces).toEqual([]);
 });
 
 test("离线产物通过 HTTP 启动并保持自包含词库", async ({ page }, testInfo) => {

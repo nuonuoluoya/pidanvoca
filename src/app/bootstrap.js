@@ -1,3 +1,4 @@
+    const runtime = window.PidanvocaRuntime;
     const APP_BUILD_TARGET = __BUILD_APP_BUILD_TARGET__;
     const BUILT_IN_BOOKS = __BUILD_BUILT_IN_BOOKS__;
     const PROJECT_PERSONAL_BOOKS = __BUILD_PERSONAL_BOOKS__;
@@ -24,15 +25,15 @@
     const memoryPackageVersion = __BUILD_FSRS_PACKAGE_VERSION__;
     const memoryParameterVersion = 'default-0.90-v1';
     const memoryAppVersion = '1.1.0';
-    const memoryCore = window.MemoryCurveCore;
-    const memoryScheduler = window.FSRS.fsrs({
+    const memoryCore = runtime.memoryCore;
+    const memoryScheduler = runtime.fsrs.fsrs({
       request_retention: 0.9,
       enable_short_term: true,
       learning_steps: ['10m'],
       relearning_steps: ['10m'],
       enable_fuzz: true
     });
-    const vocabularyDatabase = window.PidanvocaStorage.createDatabaseClient({
+    const vocabularyDatabase = runtime.storage.createDatabaseClient({
       indexedDB: window.indexedDB,
       name: vocabularyDatabaseName,
       version: vocabularyDatabaseVersion,
@@ -43,15 +44,15 @@
       onBlocked: () => showImportStatus('数据库升级正被另一个旧页面占用，请关闭其他单词本标签页后重试。', true, true),
       onVersionChange: () => showImportStatus('检测到新版本数据库，当前连接已安全关闭；下次操作会自动重连。', false, true)
     });
-    const reviewRepository = window.PidanvocaStorage.createReviewRepository({
+    const reviewRepository = runtime.storage.createReviewRepository({
       databaseClient: vocabularyDatabase,
       keyRange: window.IDBKeyRange
     });
-    const wordbookRepository = window.PidanvocaStorage.createWordbookRepository({
+    const wordbookRepository = runtime.storage.createWordbookRepository({
       databaseClient: vocabularyDatabase,
       recordKey: vocabularyDatabaseRecord
     });
-    const settingsRepository = window.PidanvocaStorage.createSettingsRepository({
+    const settingsRepository = runtime.storage.createSettingsRepository({
       storage: (() => {
         try { return window.localStorage; } catch { return null; }
       })(),
@@ -61,11 +62,11 @@
       legacyBookIds: LEGACY_BUILT_IN_BOOK_IDS,
       defaultStudySize
     });
-    const settingsController = new window.PidanvocaSettings.SettingsController({
+    const settingsController = new runtime.settings.SettingsController({
       theme: document.documentElement.dataset.theme
     });
     function normalizeStudySize(value) {
-      return window.PidanvocaStorage.normalizeStudySize(value, defaultStudySize);
+      return runtime.storage.normalizeStudySize(value, defaultStudySize);
     }
 
     function loadStudySizePreference() {
@@ -462,7 +463,7 @@
     const memoryCompleteDetail = document.getElementById('memoryCompleteDetail');
     const memoryReturnButton = document.getElementById('memoryReturnButton');
     deckStage.append(memoryBackdrop);
-    const memoryReviewView = new window.PidanvocaViews.MemoryReviewView({
+    const memoryReviewView = new runtime.views.MemoryReviewView({
       panel: memoryPanel,
       elements: {
         complete: memoryComplete,
@@ -499,13 +500,13 @@
     shuffleButton.disabled = true;
     memoryButton.disabled = true;
 
-    const classicDeckController = new window.PidanvocaClassicDeck.ClassicDeckController();
+    const classicDeckController = new runtime.classicDeck.ClassicDeckController();
     classicDeckController.installLegacyBindings(window);
-    const memoryReviewController = new window.PidanvocaMemoryReview.MemoryReviewController();
+    const memoryReviewController = new runtime.memoryReview.MemoryReviewController();
     memoryReviewController.installLegacyBindings(window);
     const legacyStudySizePreference = loadStudySizePreference();
     let studySizePreferences = loadStudySizePreferences();
-    const wordbookController = new window.PidanvocaWordbooks.WordbookController({
+    const wordbookController = new runtime.wordbooks.WordbookController({
       builtInBooks: BUILT_IN_BOOKS,
       defaultBook: DEFAULT_BOOK,
       projectPersonalBooks: PROJECT_PERSONAL_BOOKS,
@@ -540,7 +541,7 @@
     let memorySummaryRefreshTimer = 0;
     let memoryLastClock = Date.now();
     const memoryOverviewCache = new Map();
-      const animationCoordinator = new window.PidanvocaAnimations.AnimationCoordinator(({ state }) => {
+      const animationCoordinator = new runtime.animations.AnimationCoordinator(({ state }) => {
         deckStage.dataset.animationState = state;
       });
       deckStage.dataset.animationState = animationCoordinator.state;
@@ -550,7 +551,7 @@
       const mobileClassicLayout = window.matchMedia('(max-width: 700px)');
       const stackedCardPointer = window.matchMedia('(min-width: 701px) and (hover: hover) and (pointer: fine)');
       let classicSwipeGesture = null;
-      const settingsView = new window.PidanvocaViews.SettingsView({
+      const settingsView = new runtime.views.SettingsView({
         window,
         document,
         app,
@@ -559,7 +560,7 @@
         themeButton,
         themeMeta: themeColorMeta
       });
-      const wordbookView = new window.PidanvocaViews.WordbookView({
+      const wordbookView = new runtime.views.WordbookView({
         document,
         button: wordbookButton,
         panel: wordbookPanel,
@@ -570,7 +571,7 @@
         deleteButton: studySizeDelete,
         reducedMotion
       });
-      const completionView = new window.PidanvocaViews.CompletionView({
+      const completionView = new runtime.views.CompletionView({
         window,
         backdrop: studyCompleteBackdrop,
         title: studyCompleteTitle,
@@ -603,7 +604,7 @@
     }
 
     function memoryWordMap() {
-      return window.PidanvocaMemoryReview.createWordMap(WORDS, memoryCore.normalizeWordKey);
+      return runtime.memoryReview.createWordMap(WORDS, memoryCore.normalizeWordKey);
     }
 
     function memoryRecordFromCard(bookId, word, card) {
@@ -728,10 +729,10 @@
       memorySummaryRefreshTimer = 0;
       if (document.hidden) return;
       const now = Date.now();
-      const delay = window.PidanvocaMemoryRefresh.nextRefreshDelay(now, nextDue);
+      const delay = runtime.memoryRefresh.nextRefreshDelay(now, nextDue);
       memorySummaryRefreshTimer = window.setTimeout(() => {
         const currentTime = Date.now();
-        if (window.PidanvocaMemoryRefresh.hasSignificantClockRollback(memoryLastClock, currentTime)) {
+        if (runtime.memoryRefresh.hasSignificantClockRollback(memoryLastClock, currentTime)) {
           showImportStatus('检测到设备时间明显回拨；已有复习时间未被改写，请确认系统时钟。', true);
         }
         memoryLastClock = currentTime;
@@ -832,7 +833,7 @@
       const overview = await memoryOverview(bookId);
       const selectedKeys = await memoryDailySelection(bookId, overview);
       return {
-        ...window.PidanvocaMemoryReview.buildReviewQueue(
+        ...runtime.memoryReview.buildReviewQueue(
           WORDS,
           overview.due,
           selectedKeys,
@@ -941,7 +942,7 @@
         const card = memoryCore.deserializeFsrsCard(item.record.fsrsCard);
         if (card) return card;
       }
-      return window.FSRS.createEmptyCard(memoryPreviewTime);
+      return runtime.fsrs.createEmptyCard(memoryPreviewTime);
     }
 
     function focusMemorySurface() {
@@ -1017,8 +1018,8 @@
         phonetic: item.word.phonetic || '',
         meaning: item.word.meaning || '暂无释义',
         note: item.word.note || '',
-        againInterval: memoryCore.intervalLabel(previewTime, schedule[window.FSRS.Rating.Again].card.due),
-        goodInterval: memoryCore.intervalLabel(previewTime, schedule[window.FSRS.Rating.Good].card.due)
+        againInterval: memoryCore.intervalLabel(previewTime, schedule[runtime.fsrs.Rating.Again].card.due),
+        goodInterval: memoryCore.intervalLabel(previewTime, schedule[runtime.fsrs.Rating.Good].card.due)
       };
     }
 
@@ -1034,11 +1035,11 @@
     }
 
     function waitForElementTransition(element, propertyName, fallbackMilliseconds) {
-      return window.PidanvocaAnimations.waitForElementTransition(element, propertyName, fallbackMilliseconds, window);
+      return runtime.animations.waitForElementTransition(element, propertyName, fallbackMilliseconds, window);
     }
 
     function afterTwoAnimationFrames(callback) {
-      window.PidanvocaAnimations.afterTwoAnimationFrames(callback, window.requestAnimationFrame.bind(window));
+      runtime.animations.afterTwoAnimationFrames(callback, window.requestAnimationFrame.bind(window));
     }
 
     function prepareMemoryStackAdvance() {
@@ -1274,10 +1275,10 @@
 
     async function rateMemoryCard(rating) {
       const item = memoryCurrentItem();
-      if (!item || !memoryPreview || memoryRatingPending || !animationCoordinator.isIdle || (rating !== window.FSRS.Rating.Again && rating !== window.FSRS.Rating.Good)) return;
+      if (!item || !memoryPreview || memoryRatingPending || !animationCoordinator.isIdle || (rating !== runtime.fsrs.Rating.Again && rating !== runtime.fsrs.Rating.Good)) return;
       if (!ensureVolatileMemoryConsent()) return;
       if (memoryStudyMode === 'spelling') {
-        if (rating === window.FSRS.Rating.Good && !memorySpellingAccepted) return;
+        if (rating === runtime.fsrs.Rating.Good && !memorySpellingAccepted) return;
       }
       cancelMemorySpellingAdvance();
       if (!memoryReviewController.beginRating()) return;
@@ -1305,7 +1306,7 @@
           dueAfter: afterRecord.due,
           scheduledDays: afterRecord.scheduledDays,
           elapsedDays: afterRecord.elapsedDays,
-          stateBefore: item.record ? item.record.state : window.FSRS.State.New,
+          stateBefore: item.record ? item.record.state : runtime.fsrs.State.New,
           stateAfter: afterRecord.state,
           beforeRecord: item.record ? { ...item.record } : null,
           afterRecord: { ...afterRecord },
@@ -1331,7 +1332,7 @@
         });
         if (transition.isActive()) {
           transition.move('exiting-current');
-          await transitionMemoryCardAfterRating(exitPoint, rating === window.FSRS.Rating.Good, transition);
+          await transitionMemoryCardAfterRating(exitPoint, rating === runtime.fsrs.Rating.Good, transition);
         } else {
           renderMemoryCard(false);
         }
@@ -1339,7 +1340,7 @@
         refreshMemorySummary();
       } catch (error) {
         transition.cancel('rating-failed');
-        if (memoryStudyMode === 'spelling' && rating === window.FSRS.Rating.Good) {
+        if (memoryStudyMode === 'spelling' && rating === runtime.fsrs.Rating.Good) {
           memorySpellingAccepted = false;
           memorySpellingInput.readOnly = false;
           memorySpellingInput.classList.remove('is-correct');
@@ -1416,7 +1417,7 @@
         syncMemoryRatingButtons();
         memorySpellingAdvanceTimer = window.setTimeout(() => {
           memorySpellingAdvanceTimer = 0;
-          rateMemoryCard(window.FSRS.Rating.Good);
+          rateMemoryCard(runtime.fsrs.Rating.Good);
         }, 600);
         return;
       }
@@ -1552,7 +1553,7 @@
     }
 
     function createExitPoint() {
-      return window.PidanvocaAnimations.createExitPoint({ width: window.innerWidth, height: window.innerHeight });
+      return runtime.animations.createExitPoint({ width: window.innerWidth, height: window.innerHeight });
     }
 
     function exitPointFor(deckPosition) {
@@ -1561,16 +1562,16 @@
     }
 
     function applyExitPoint(card, point) {
-      window.PidanvocaAnimations.applyExitPoint(card, point);
+      runtime.animations.applyExitPoint(card, point);
     }
 
     function clearExitPoint(card) {
-      window.PidanvocaAnimations.clearExitPoint(card);
+      runtime.animations.clearExitPoint(card);
     }
 
     const importedEntityDecoder = document.createElement('textarea');
     const importBatchSize = 100;
-    const importLimits = window.PidanvocaImport.DEFAULT_IMPORT_LIMITS;
+    const importLimits = runtime.importProcessor.DEFAULT_IMPORT_LIMITS;
 
     function decodeImportedEntities(value) {
       importedEntityDecoder.innerHTML = value;
@@ -1582,15 +1583,15 @@
     }
 
     function importedHtmlToText(html) {
-      return window.PidanvocaWordbooks.htmlToText(String(html), decodeImportedEntities);
+      return runtime.wordbooks.htmlToText(String(html), decodeImportedEntities);
     }
 
     function extractImportedNote(explanationHtml) {
-      return window.PidanvocaWordbooks.extractNote(explanationHtml);
+      return runtime.wordbooks.extractNote(explanationHtml);
     }
 
     function extractImportedMeaning(explanationHtml, note) {
-      return window.PidanvocaWordbooks.extractMeaning(explanationHtml, note, importedHtmlToText);
+      return runtime.wordbooks.extractMeaning(explanationHtml, note, importedHtmlToText);
     }
 
     function collectImportedRows(root, entries) {
@@ -1647,7 +1648,7 @@
     }
 
     function validateImportFiles(files) {
-      return window.PidanvocaImport.validateFileSelection(files, importLimits);
+      return runtime.importProcessor.validateFileSelection(files, importLimits);
     }
 
     function cancelImportTask() {
@@ -1658,7 +1659,7 @@
 
     function processImportedBooks(books, onProgress) {
       if (!('Worker' in window)) {
-        return window.PidanvocaImport.processImportedBooks(books, {
+        return runtime.importProcessor.processImportedBooks(books, {
           limits: importLimits,
           onProgress,
           yieldControl: yieldToMainThread
@@ -1812,7 +1813,7 @@
     }
 
     function createDeck() {
-      return window.PidanvocaClassicDeck.createShuffledDeck(WORDS.length, randomIndex);
+      return runtime.classicDeck.createShuffledDeck(WORDS.length, randomIndex);
     }
 
     function cancelSpellingAdvance() {
@@ -1821,7 +1822,7 @@
     }
 
     function normalizeSpelling(value) {
-      return window.PidanvocaClassicDeck.normalizeSpelling(value);
+      return runtime.classicDeck.normalizeSpelling(value);
     }
 
     function appendMeaningText(element, value) {
@@ -1903,7 +1904,7 @@
       }, 600);
     }
 
-    const classicDeckView = new window.PidanvocaViews.ClassicDeckView({
+    const classicDeckView = new runtime.views.ClassicDeckView({
       document,
       cardLayer,
       getEntry: (deckPosition) => WORDS[deck[deckPosition]],
@@ -1914,7 +1915,7 @@
       appendMeaningText,
       now: () => performance.now()
     });
-    const deckTransitionView = new window.PidanvocaAnimations.DeckTransitionView({
+    const deckTransitionView = new runtime.animations.DeckTransitionView({
       cardLayer,
       synchronizeCards: (...args) => synchronizeCards(...args),
       setCardOffset: (card, offset) => setCardOffset(card, offset),
@@ -1927,7 +1928,7 @@
     }
 
     function createStudyGroup(start, requestedSize = studySize) {
-      return window.PidanvocaClassicDeck.createStudyGroup(deck.length, start, requestedSize);
+      return runtime.classicDeck.createStudyGroup(deck.length, start, requestedSize);
     }
 
     function currentStudyGroup() {
@@ -1935,11 +1936,11 @@
     }
 
     function studyGroupForPosition(deckPosition) {
-      return window.PidanvocaClassicDeck.studyGroupForPosition(studyGroups, studyGroupIndex, deckPosition);
+      return runtime.classicDeck.studyGroupForPosition(studyGroups, studyGroupIndex, deckPosition);
     }
 
     function studyProgressFor(deckPosition) {
-      return window.PidanvocaClassicDeck.studyProgress(deck.length, studyGroups, studyGroupIndex, deckPosition);
+      return runtime.classicDeck.studyProgress(deck.length, studyGroups, studyGroupIndex, deckPosition);
     }
 
     function updateStudySizeControls() {
@@ -2208,7 +2209,7 @@
           shakeBlockedMemoryGood();
           return true;
         }
-        rateMemoryCard(window.FSRS.Rating.Good);
+        rateMemoryCard(runtime.fsrs.Rating.Good);
         return true;
       }
       if (!isTransitioning && !isStudyCompleteOpen && !document.body.classList.contains('settings-open')) next();
@@ -2305,7 +2306,7 @@
     }
 
     function renderWordbookLists() {
-      const model = window.PidanvocaViews.createWordbookPresentation({
+      const model = runtime.views.createWordbookPresentation({
         builtInBooks: BUILT_IN_BOOKS,
         customBooks,
         activeBuiltInBookId,
@@ -2427,7 +2428,7 @@
       window.speechSynthesis.speak(utterance);
     }
 
-    const appEventScope = new window.PidanvocaAppEvents.EventScope();
+    const appEventScope = new runtime.appEvents.EventScope();
     appEventScope.bind([
       { target: previousButton, type: 'click', listener: previous },
       { target: nextButton, type: 'click', listener: next },
@@ -2499,8 +2500,8 @@
     memoryCard.addEventListener('click', (event) => {
       if (!(event.target instanceof HTMLInputElement)) revealMemoryAnswer();
     });
-    memoryAgainButton.addEventListener('click', () => rateMemoryCard(window.FSRS.Rating.Again));
-    memoryGoodButton.addEventListener('click', () => rateMemoryCard(window.FSRS.Rating.Good));
+    memoryAgainButton.addEventListener('click', () => rateMemoryCard(runtime.fsrs.Rating.Again));
+    memoryGoodButton.addEventListener('click', () => rateMemoryCard(runtime.fsrs.Rating.Good));
     memoryUndoButton.addEventListener('click', undoMemoryRating);
     memorySpellingInput.addEventListener('input', () => checkMemorySpelling(false));
     memorySpellingInput.addEventListener('keydown', (event) => {
@@ -2592,12 +2593,12 @@
         }
         if (event.key === '1' || event.key === 'ArrowLeft') {
           event.preventDefault();
-          rateMemoryCard(window.FSRS.Rating.Again);
+          rateMemoryCard(runtime.fsrs.Rating.Again);
           return;
         }
         if (memoryStudyMode !== 'spelling' && (event.key === '2' || event.key === 'ArrowRight')) {
           event.preventDefault();
-          rateMemoryCard(window.FSRS.Rating.Good);
+          rateMemoryCard(runtime.fsrs.Rating.Good);
           return;
         }
         return;

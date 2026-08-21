@@ -2,6 +2,12 @@
 
 Pidanvoca 保持原生 JavaScript 和静态托管，不依赖应用框架或后端。`build-vocabulary.js` 是兼容构建入口；业务状态与副作用已按功能边界迁移到 `src/`，生成页面只通过这些公开接口编排。
 
+## 运行时模块边界
+
+`src/app/runtime-dependencies.mjs` 是应用模块的唯一组合入口。esbuild 通过 ESM 导入业务模块，`bundle-entry.js` 只在启动 `bootstrap.js` 期间提供唯一的 `PidanvocaRuntime` 依赖对象，随后立即删除它。旧的 `window.Pidanvoca*`、`window.MemoryCurveCore` 和 `window.FSRS` 等公开命名空间不再创建；应用闭包继续持有同一组依赖，因此在线版和离线版不会依赖可变的全局模块对象。
+
+旧页面运行时变量目前仍以不可枚举属性映射到各 Controller 的单一状态，用于兼容尚未完全改写的启动编排。它们不是公开 API，后续删除时应按状态域逐项迁移并保持现有浏览器契约。
+
 ## 状态所有权
 
 - `ClassicDeckController` 独占随机卡组、当前位置、学习组和待提交移动。
@@ -47,3 +53,4 @@ corrupted
 - Playwright 覆盖桌面、移动端、reduced-motion、在线按需加载和 `file://` 离线启动。
 - ESLint、Prettier、JSDoc 类型检查和可复现生成文件检查在 CI 中执行。
 - `performance-budgets.json` 约束产物体积、20,000 词洗牌、50,000 词导入以及可见卡片 DOM 数。
+- 浏览器启动契约额外断言旧模块命名空间不会残留在 `window` 上。

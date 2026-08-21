@@ -5,7 +5,7 @@
       : root.PidanvocaClassicDeck;
   const api = factory(model);
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) {
+  else if (root) {
     root.PidanvocaClassicDeck = Object.assign(
       {},
       root.PidanvocaClassicDeck || {},

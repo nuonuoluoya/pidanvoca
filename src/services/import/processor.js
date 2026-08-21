@@ -1,7 +1,7 @@
 (function attachImportProcessor(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) root.PidanvocaImport = api;
+  else if (root) root.PidanvocaImport = api;
 })(
   typeof globalThis !== "undefined" ? globalThis : this,
   function createImportProcessorApi() {

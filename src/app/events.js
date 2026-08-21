@@ -1,7 +1,7 @@
 (function attachAppEvents(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) root.PidanvocaAppEvents = api;
+  else if (root) root.PidanvocaAppEvents = api;
 })(
   typeof globalThis !== "undefined" ? globalThis : this,
   function createAppEventsApi() {

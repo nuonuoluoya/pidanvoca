@@ -82,6 +82,10 @@ test("兼容构建入口委托给拆分后的构建器与源码模板", () => {
     fs.readFileSync(bundleEntryPath, "utf8"),
     /require\("\.\/bootstrap"\)/,
   );
+  assert.match(
+    fs.readFileSync(bundleEntryPath, "utf8"),
+    /delete window\.PidanvocaRuntime/,
+  );
 });
 
 test("生成页面带有禁止直接编辑的构建标记", () => {

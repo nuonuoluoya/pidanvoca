@@ -1,7 +1,7 @@
 (function attachStorageMigrationV1(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  if (root) {
+  else if (root) {
     root.PidanvocaStorageMigrations = Object.assign(
       {},
       root.PidanvocaStorageMigrations || {},
